@@ -15,10 +15,17 @@ def main():
 
     util.set_seed(args.seed)
 
-    # load pre-trained model
-    model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
+    # load pre-trained base model
+    model, tokenizer = None, None
     tokenizer = DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased')
+    if args.variant == 'baseline':
+        model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
+    elif args.variant == 'qagan':
+        raise NotImplementedError
+    else:
+        raise ValueError
 
+    # mode of operation
     if args.do_train:
         if not os.path.exists(args.save_dir):
             os.makedirs(args.save_dir)
@@ -28,17 +35,17 @@ def main():
         split_name = 'test' if 'test' in args.eval_dir else 'validation'
         logger = util.get_logger(args.save_dir, f'log_{split_name}')
 
-    # define trainer
-    trainer = Trainer(args, model, tokenizer, logger)
-
     if args.do_train:
+        # define trainer
+        trainer = Trainer(args, model, tokenizer, logger)
         # train the model
         trainer.train()
     elif args.do_eval:
         # load pretrained model
         checkpoint_path = os.path.join(args.save_dir, 'checkpoint')
         model = DistilBertForQuestionAnswering.from_pretrained(checkpoint_path)
-
+        # define trainer
+        trainer = Trainer(args, model, tokenizer, logger)
         # run evaluation
         eval_preds, eval_scores = trainer.evaluate( dataloader=trainer.eval_dataloader,
                                                     data_dict=trainer.eval_dict,

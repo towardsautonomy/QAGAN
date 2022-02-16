@@ -8,14 +8,15 @@ reset=\\033[0m
 
 # function to print usage
 print_usage() {
-    echo -e "    -> Usage: ./run_experiments.sh train|evaluate|test experiment_name${reset}"
+    echo -e "    -> Usage: ./run_experiments.sh [train|evaluate|test] [baseline|qagan] [experiment_name]${reset}"
 }
 
 # experiment mode
 MODE=$1
-experiment=$2
-if [ "$#" -ne 2 ]; then
-    echo -e "${red}Please provide experiment mode and experiment name."
+variant=$2
+experiment=$3
+if [ "$#" -ne 3 ]; then
+    echo -e "${red}Incorrect arguments."
     print_usage
     exit 1
 fi
@@ -24,21 +25,24 @@ fi
 if [ "$MODE" == "train" ]; then
     # train
     python run.py --do-train \
-                  --eval-every 2000 --run-name "$experiment"
+                  --variant ${variant} \
+                  --eval-every 2000 --run-name ${experiment}
 
 elif [ "$MODE" == "evaluate" ]; then
     # evaluate
    python run.py --do-eval \
+                 --variant ${variant} \
                  --sub-file mtl_submission_val.csv \
-                 --save-dir save/"$experiment"-01 --eval-dir datasets/oodomain_val
+                 --save-dir save/${experiment}-01 --eval-dir datasets/oodomain_val
 
 elif [ "$MODE" == "test" ]; then
 	# evaluate
     python run.py --do-eval \
-                    --sub-file mtl_submission.csv \
-                    --save-dir save/"$experiment"-01
+                  --variant ${variant} \
+                  --sub-file mtl_submission.csv \
+                  --save-dir save/${experiment}-01
 else
     # print error
-    echo -e "${red}Error:${reset} Invalid mode"
+    echo -e "${red} Invalid mode"
     print_usage
 fi

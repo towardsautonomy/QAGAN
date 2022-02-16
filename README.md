@@ -3,9 +3,11 @@
 ## Getting Started
 - Download datasets from [here](https://drive.google.com/file/d/1Fv2d30hY-2niU7t61ktnMsi_HUXS6-Qx/view?usp=sharing)
 - Setup environment with `cd environment && conda env create -f conda_env.yml`
-- Train a baseline MTL system with `./run_experiments.sh train baseline`
-- Evaluate the system on test set with `./run_experiments.sh test baseline`
-- Upload the csv file in `save/baseline-01` to the test leaderboard. For the validation leaderboard, run `./run_experiments.sh evaluate baseline`
+- Usage: `./run_experiments.sh {MODE} {VARIANT} {EXPERIMENT_NAME}`
+- e.g:
+    - Train a baseline MTL system with `./run_experiments.sh train baseline baseline`
+    - Evaluate the system on test set with `./run_experiments.sh test baseline baseline`
+    - Upload the csv file in `save/baseline-01` to the test leaderboard. For the validation leaderboard, run `./run_experiments.sh evaluate baseline baseline`
 
 # Experiments
 
