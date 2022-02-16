@@ -34,8 +34,8 @@ elif [ "$MODE" == "evaluate" ]; then
 
 elif [ "$MODE" == "test" ]; then
 	# evaluate
-    python train.py --do-eval 
-                    --sub-file mtl_submission.csv 
+    python run.py --do-eval \
+                    --sub-file mtl_submission.csv \
                     --save-dir save/"$experiment"-01
 else
     # print error
