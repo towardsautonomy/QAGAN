@@ -20,7 +20,7 @@ def get_train_test_args():
     parser.add_argument('--do-train', action='store_true')
     parser.add_argument('--do-eval', action='store_true')
     parser.add_argument('--sub-file', type=str, default='')
-    parser.add_argument('--visualize-predictions', action='store_true')
+    parser.add_argument('--no-visualization', action='store_true')
     parser.add_argument('--eval-every', type=int, default=5000)
     args = parser.parse_args()
     return args

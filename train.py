@@ -144,7 +144,7 @@ class Trainer():
         self.num_visuals = args.num_visuals
         self.save_dir = args.save_dir
         self.log = log
-        self.visualize_predictions = args.visualize_predictions
+        self.no_visualization = args.no_visualization
         if not os.path.exists(self.path):
             os.makedirs(self.path)
 
@@ -227,7 +227,7 @@ class Trainer():
                         for k, v in curr_score.items():
                             tbx.add_scalar(f'val/{k}', v, global_idx)
                         self.log.info(f'Eval {results_str}')
-                        if self.visualize_predictions:
+                        if not self.no_visualization:
                             util.visualize(tbx,
                                            pred_dict=preds,
                                            gold_dict=val_dict,

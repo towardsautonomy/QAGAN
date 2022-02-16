@@ -1,0 +1,9 @@
+# build files
+__pycache__
+
+# datasets
+*.tar.gz
+datasets/
+
+# checkpoints and logs
+save/
