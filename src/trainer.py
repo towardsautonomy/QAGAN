@@ -1,5 +1,6 @@
 import argparse
 import json
+from lib2to3.pgen2.tokenize import tokenize
 import os
 from collections import OrderedDict
 import torch
@@ -60,7 +61,8 @@ def prepare_train_data(dataset_dict, tokenizer):
     # Let's label those examples!
     tokenized_examples["start_positions"] = []
     tokenized_examples["end_positions"] = []
-    tokenized_examples['id'] = []
+    tokenized_examples["id"] = []
+    tokenized_examples["labels"] = []
     inaccurate = 0
     for i, offsets in enumerate(tqdm(offset_mapping)):
         # We will label impossible answers with the index of the CLS token.
@@ -81,6 +83,9 @@ def prepare_train_data(dataset_dict, tokenizer):
         token_start_index = 0
         while sequence_ids[token_start_index] != 1:
             token_start_index += 1
+
+        # label corresponding to the dataset class
+        tokenized_examples["labels"].append(dataset_dict['labels'][sample_index])
 
         # End token index of the current span in the text.
         token_end_index = len(input_ids) - 1
@@ -111,10 +116,7 @@ def prepare_train_data(dataset_dict, tokenizer):
     print(f"Preprocessing not completely accurate for {inaccurate}/{total} instances")
     return tokenized_examples
 
-
-
 def read_and_process(args, tokenizer, dataset_dict, dir_name, dataset_name, split):
-    #TODO: cache this if possible
     cache_path = f'{dir_name}/{dataset_name}_encodings.pt'
     if os.path.exists(cache_path) and not args.recompute_features:
         tokenized_examples = util.load_pickle(cache_path)
@@ -184,7 +186,11 @@ class Trainer():
                 input_ids = batch['input_ids'].to(device)
                 attention_mask = batch['attention_mask'].to(device)
                 batch_size = len(input_ids)
-                outputs = self.model(input_ids, attention_mask=attention_mask)
+                # model inputs
+                model_input_dict = {'input_ids': input_ids,
+                                    'attention_mask': attention_mask}
+
+                outputs = self.model(**model_input_dict)
                 # Forward
                 start_logits, end_logits = outputs.start_logits, outputs.end_logits
                 # compute loss
@@ -229,15 +235,32 @@ class Trainer():
                     attention_mask = batch['attention_mask'].to(device)
                     start_positions = batch['start_positions'].to(device)
                     end_positions = batch['end_positions'].to(device)
-                    outputs = self.model(input_ids, attention_mask=attention_mask,
-                                    start_positions=start_positions,
-                                    end_positions=end_positions)
+
+                    # model inputs
+                    model_input_dict = {'input_ids': input_ids,
+                                        'attention_mask': attention_mask,
+                                        'start_positions': start_positions,
+                                        'end_positions': end_positions}
+
+                    labels = None
+                    if 'use_discriminator' in self.model.config.__dict__.keys():
+                        labels = batch['labels'].to(device) \
+                                 if self.model.config.__dict__['use_discriminator'] else None
+                        model_input_dict['labels'] = labels
+
+                    outputs = self.model(**model_input_dict)
                     loss = outputs[0]
                     loss.backward()
                     optim.step()
                     progress_bar.update(len(input_ids))
                     progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
-                    tbx.add_scalar('train/NLL', loss.item(), global_idx)
+                    if hasattr(outputs, 'loss_dict'):
+                        progress_bar.set_postfix(epoch=epoch_num, **outputs.loss_dict)
+                        for k, v in outputs.loss_dict.items():
+                            tbx.add_scalar(f'train/{k}', v, global_idx)
+                    else:
+                        progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
+                        tbx.add_scalar(f'train/NLL', loss.item(), global_idx)
                     if (global_idx % self.eval_every) == 0:
                         self.logger.info(f'Evaluating at step {global_idx}...')
                         preds, curr_score = self.evaluate(self.val_dataloader, self.val_dict, return_preds=True)
@@ -263,9 +286,9 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name):
     datasets = datasets.split(',')
     dataset_dict = None
     dataset_name=''
-    for dataset in datasets:
+    for i, dataset in enumerate(datasets):
         dataset_name += f'_{dataset}'
         dataset_dict_curr = util.read_squad(f'{data_dir}/{dataset}')
-        dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
+        dataset_dict = util.merge(dataset_dict, dataset_dict_curr, i)
     data_encodings = read_and_process(args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
     return util.QADataset(data_encodings, train=(split_name=='train')), dataset_dict

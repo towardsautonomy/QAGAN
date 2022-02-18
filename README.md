@@ -5,13 +5,24 @@
 - Setup environment with `cd environment && conda env create -f conda_env.yml`
 - Usage: `./run_experiments.sh {MODE} {VARIANT} {EXPERIMENT_NAME}`
 - e.g:
-    - Train a baseline MTL system with `./run_experiments.sh train baseline baseline`
-    - Evaluate the system on test set with `./run_experiments.sh test baseline baseline`
-    - Upload the csv file in `save/baseline-01` to the test leaderboard. For the validation leaderboard, run `./run_experiments.sh evaluate baseline baseline`
+    - Train a baseline MTL system with `./run_experiments.sh train baseline-v0 default`
+    - Evaluate the system on test set with `./run_experiments.sh test baseline-v0 default`
+    - Evaluate the system on validation set, run `./run_experiments.sh evaluate baseline-v0 default`
+- For submitting to leaderboard, upload the csv file generated in `save/{VARIANT}.{EXPERIMENT_NAME}-01` to the test leaderboard.
 
 # Experiments
 
+## Definition of various variants
+| Variant     | Prediction Head | Discriminator | Attention-Based Pred Head | Conditional Pred Head |
+| ----------- | --------------- | ------------- | ------------------------- | --------------------- |
+| baseline-v0 | default         | [ ]           | [ ]                       | [ ]                   |
+| baseline-v1 | 2 layer MLP     | [ ]           | [ ]                       | [ ]                   |
+| qagan-v0    | 2 layer MLP     | [x]           | [ ]                       | [ ]                   |
+
+## Experiment Results
 | Variant     | Split           | F1          | EM          |  
 | ----------- | --------------- | ----------- | ----------- |
-| Baseline    | indomain_val    | 70.49       | 54.48       |
-| Baseline    | oodomain_val    | 48.29       | 30.89       |
+| Baseline-v0 | indomain_val    | 70.49       | 54.48       |
+| Baseline-v0 | oodomain_val    | 48.29       | 30.89       |
+| Baseline-v1 | indomain_val    | 70.65       | 54.67       |
+| Baseline-v1 | oodomain_val    | 48.53       | 34.03       |

@@ -2,7 +2,9 @@ import argparse
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--variant', type=str, choices=['baseline', 'qagan'])
+    parser.add_argument('--variant', type=str, choices=['baseline-v0', 
+                                                        'baseline-v1', 
+                                                        'qagan-v0'])
     parser.add_argument('--batch-size', type=int, default=16)
     parser.add_argument('--num-epochs', type=int, default=3)
     parser.add_argument('--lr', type=float, default=3e-5)
@@ -11,6 +13,7 @@ def get_args():
     parser.add_argument('--save-dir', type=str, default='save/')
     parser.add_argument('--train', action='store_true')
     parser.add_argument('--eval', action='store_true')
+    parser.add_argument('--load-pretrained', action='store_true', default=False)
     parser.add_argument('--train-datasets', type=str, default='squad,nat_questions,newsqa')
     parser.add_argument('--run-name', type=str, default='multitask_distilbert')
     parser.add_argument('--recompute-features', action='store_true')

@@ -4,8 +4,10 @@ import csv
 import src.util as util
 from transformers import DistilBertTokenizerFast
 from transformers import DistilBertForQuestionAnswering
+from transformers import DistilBertModel, DistilBertConfig
 
 from src.args import get_args
+from src.model import QAGAN, QAGANConfig
 from src.trainer import Trainer
 
 def main():
@@ -17,11 +19,30 @@ def main():
 
     # load pre-trained base model
     model, tokenizer = None, None
-    tokenizer = DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased')
-    if args.variant == 'baseline':
+    if args.variant == 'baseline-v0':
+        tokenizer = DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased')
         model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
-    elif args.variant == 'qagan':
-        raise NotImplementedError
+    elif 'qagan' in args.variant:
+        config = DistilBertConfig()
+        config.output_hidden_states = False
+        config.output_attentions = False
+        tokenizer = DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased')
+        backbone = DistilBertModel.from_pretrained("distilbert-base-uncased", config=config)
+        if args.variant == 'baseline-v1':
+            qconfig = QAGANConfig(backbone=backbone, 
+                                  tokenizer=tokenizer)
+        elif args.variant == 'qagan-v0':
+            qconfig = QAGANConfig(backbone=backbone, 
+                                  tokenizer=tokenizer, 
+                                  use_discriminator=True)
+        else:
+            raise ValueError
+
+        # get the QAGAN model
+        if args.load_pretrained:
+            model = QAGAN(config=qconfig).from_pretrained(args.save_dir)
+        else:
+            model = QAGAN(config=qconfig)
     else:
         raise ValueError
 
@@ -29,7 +50,7 @@ def main():
     if args.do_train:
         if not os.path.exists(args.save_dir):
             os.makedirs(args.save_dir)
-        args.save_dir = util.get_save_dir(args.save_dir, args.run_name)
+        args.save_dir = util.get_save_dir(args.save_dir, args.variant, args.run_name)
         logger = util.get_logger(args.save_dir, 'log_train')
     elif args.do_eval:
         split_name = 'test' if 'test' in args.eval_dir else 'validation'
@@ -43,7 +64,10 @@ def main():
     elif args.do_eval:
         # load pretrained model
         checkpoint_path = os.path.join(args.save_dir, 'checkpoint')
-        model = DistilBertForQuestionAnswering.from_pretrained(checkpoint_path)
+        if args.variant == 'baseline':
+            model = DistilBertForQuestionAnswering.from_pretrained(checkpoint_path)
+        else:
+            model = QAGAN(config=qconfig).from_pretrained(checkpoint_path)
         # define trainer
         trainer = Trainer(args, model, tokenizer, logger)
         # run evaluation

@@ -60,9 +60,9 @@ def visualize(tbx, pred_dict, gold_dict, step, split, num_visuals):
                      global_step=step)
 
 
-def get_save_dir(base_dir, name, id_max=100):
+def get_save_dir(base_dir, variant, name, id_max=100):
     for uid in range(1, id_max):
-        save_dir = os.path.join(base_dir, f'{name}-{uid:02d}')
+        save_dir = os.path.join(base_dir, f'{variant}.{name}-{uid:02d}')
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
             return save_dir
@@ -83,7 +83,9 @@ def filter_encodings(encodings):
                 encodings_filtered[key].append(encodings[key][idx])
     return encodings_filtered
 
-def merge(encodings, new_encoding):
+def merge(encodings, new_encoding, dataset_id):
+    dataset_class = [dataset_id] * len(new_encoding['id'])
+    new_encoding['labels'] = dataset_class
     if not encodings:
         return new_encoding
     else:
@@ -177,7 +179,7 @@ class QADataset(Dataset):
         self.encodings = encodings
         self.keys = ['input_ids', 'attention_mask']
         if train:
-            self.keys += ['start_positions', 'end_positions']
+            self.keys += ['start_positions', 'end_positions', 'labels']
         assert(all(key in self.encodings for key in self.keys))
 
     def __getitem__(self, idx):
