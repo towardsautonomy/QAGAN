@@ -13,11 +13,11 @@
 # Experiments
 
 ## Definition of various variants
-| Variant     | Prediction Head | Discriminator | Attention-Based Pred Head | Conditional Pred Head |
-| ----------- | --------------- | ------------- | ------------------------- | --------------------- |
-| baseline-v0 | default         | [ ]           | [ ]                       | [ ]                   |
-| baseline-v1 | 2 layer MLP     | [ ]           | [ ]                       | [ ]                   |
-| qagan-v0    | 2 layer MLP     | [x]           | [ ]                       | [ ]                   |
+| Variant     | Prediction Head | Discriminator | Attention-Based Pred Head | Conditional Pred Head | Embedding Dist Reg |
+| ----------- | --------------- | ------------- | ------------------------- | --------------------- | ------------------ |
+| baseline-v0 | default         | ✗             | ✗                         | ✗                     |  ✗                 |
+| baseline-v1 | 2 layer MLP     | ✗             | ✗                         | ✗                     |  ✗                 |
+| qagan-v0    | 2 layer MLP     | ✓             | ✗                         | ✗                     |  ✗                 |
 
 ## Experiment Results
 | Variant     | Split           | F1          | EM          |  
