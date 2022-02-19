@@ -11,7 +11,8 @@ class QAGANConfig:
     num_datasets=3
     num_layers=3
     dropout=0.1
-    dis_lambda=0.5
+    disc_true_lambda=0.5
+    disc_fake_lambda=10.0
     concat=False
     use_discriminator=False
 
@@ -110,7 +111,8 @@ class QAGAN(nn.Module):
                                                  dropout=config.dropout)
         # other hyperparameters
         self.num_classes = config.num_datasets
-        self.dis_lambda = config.dis_lambda
+        self.disc_true_lambda = config.disc_true_lambda
+        self.disc_fake_lambda = config.disc_fake_lambda
         self.concat = config.concat
         self.sep_id = self.tokenizer.sep_token_id
 
@@ -165,7 +167,7 @@ class QAGAN(nn.Module):
                                     input_ids, sequence_output)
 
             # add discriminator loss
-            total_loss += self.dis_lambda * (disc_true + disc_fake)
+            total_loss += disc_true + disc_fake
             loss_dict['disc_true_loss'] = disc_true.item()
             loss_dict['disc_fake_loss'] = disc_fake.item()
 
@@ -183,8 +185,8 @@ class QAGAN(nn.Module):
             else:
                 hidden = cls_embedding
         log_prob = self.discriminator(hidden.detach())
-        criterion = nn.NLLLoss()
-        loss = self.dis_lambda * criterion(log_prob, labels)
+        criterion = nn.NLLLoss(reduction='mean')
+        loss = self.disc_true_lambda * criterion(log_prob, labels)
 
         return loss
 
@@ -200,7 +202,7 @@ class QAGAN(nn.Module):
         # As with NLLLoss, the input given is expected to contain log-probabilities
         # and is not restricted to a 2D Tensor. The targets are given as probabilities
         kl_criterion = nn.KLDivLoss(reduction="batchmean")
-        kld_loss = self.dis_lambda * kl_criterion(log_prob, targets)
+        kld_loss = self.disc_fake_lambda * kl_criterion(log_prob, targets)
 
         return kld_loss
 

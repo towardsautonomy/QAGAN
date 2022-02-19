@@ -40,7 +40,8 @@ def main():
 
         # get the QAGAN model
         if args.load_pretrained:
-            model = QAGAN(config=qconfig).from_pretrained(args.save_dir)
+            checkpoint_path = os.path.join(args.save_dir, 'checkpoint')
+            model = QAGAN(config=qconfig).from_pretrained(checkpoint_path)
         else:
             model = QAGAN(config=qconfig)
     else:
