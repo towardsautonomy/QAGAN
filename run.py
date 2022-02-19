@@ -35,6 +35,11 @@ def main():
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
                                   use_discriminator=True)
+        elif args.variant == 'qagan-v1':
+            qconfig = QAGANConfig(backbone=backbone, 
+                                  tokenizer=tokenizer, 
+                                  use_discriminator=True,
+                                  concat=True)
         else:
             raise ValueError
 
