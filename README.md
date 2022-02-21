@@ -12,17 +12,29 @@
 
 # Experiments
 
-## Definition of various variants
-| Variant     | Prediction Head | Discriminator | Attention-Based Pred Head | Conditional Pred Head | Embedding Dist Reg |
-| ----------- | --------------- | ------------- | ------------------------- | --------------------- | ------------------ |
-| baseline-v0 | default         | ✗             | ✗                         | ✗                     |  ✗                 |
-| baseline-v1 | 2 layer MLP     | ✗             | ✗                         | ✗                     |  ✗                 |
-| qagan-v0    | 2 layer MLP     | ✓             | ✗                         | ✗                     |  ✗                 |
+## Definition of Various Variants
+| Variant     | Prediction Head    | Discriminator Input | Discriminator | Logits Conditioned | Embedding Dist Reg |
+| ----------- | ------------------ | ------------------- | ------------- | ------------------ |------------------- |
+| baseline-v0 | default            | ☐                   | ✗             | ✗                  | ✗                  |
+| baseline-v1 | 2 layer MLP        | ☐                   | ✗             | ✗                  | ✗                  |
+| baseline-v3 | Self-Attention+MLP | ☐                   | ✗             | ✗                  | ✗                  |
+| qagan-v0    | 2 layer MLP        | \<CLS\>             | ✓             | ✗                  | ✗                  |
+| qagan-v1    | 2 layer MLP        | [\<CLS\>\<SEP\>]    | ✓             | ✗                  | ✗                  |
+| qagan-v2    | 2 layer MLP        | hidden layers       | ✓             | ✗                  | ✗                  |
 
-## Experiment Results
-| Variant     | Split           | F1          | EM          |  
-| ----------- | --------------- | ----------- | ----------- |
-| Baseline-v0 | indomain_val    | 70.49       | 54.48       |
-| Baseline-v0 | oodomain_val    | 48.29       | 30.89       |
-| Baseline-v1 | indomain_val    | 70.65       | 54.67       |
-| Baseline-v1 | oodomain_val    | 48.53       | 34.03       |
+## Experiment Results (DistilBERT)
+| Variant     | Split           | Discriminator Anneal | F1          | EM          |  
+| ----------- | --------------- | -------------------- | ----------- | ----------- |
+| baseline-v0 | indomain_val    | ✗                    | 70.49       | 54.48       |
+| baseline-v0 | oodomain_val    | ✗                    | 48.29       | 30.89       |
+| baseline-v1 | indomain_val    | ✗                    | 70.65       | 54.67       |
+| baseline-v1 | oodomain_val    | ✗                    | 48.53       | 34.03       |
+| qagan-v0    | indomain_val    | ✗                    | 70.20       | 54.24       |
+| qagan-v0    | oodomain_val    | ✗                    | 50.65       | 34.03       |
+| qagan-v0    | indomain_val    | ✓                    | 70.45       | 54.26       |
+| qagan-v0    | oodomain_val    | ✓                    | 49.08       | 32.46       |
+| qagan-v1    | oodomain_val    | ✗                    | 46.97       | 31.41       |
+| qagan-v1    | indomain_val    | ✓                    | 70.35       | 54.00       |
+| qagan-v1    | oodomain_val    | ✓                    | 47.84       | 34.29       |
+| qagan-v2    | indomain_val    | ✓                    | 70.51       | 54.31       |
+| qagan-v2    | oodomain_val    | ✓                    | 48.57       | 34.29       |

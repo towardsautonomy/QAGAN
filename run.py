@@ -34,12 +34,18 @@ def main():
         elif args.variant == 'qagan-v0':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
-                                  use_discriminator=True)
+                                  use_discriminator=True,
+                                  discriminate_cls=True)
         elif args.variant == 'qagan-v1':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
                                   use_discriminator=True,
-                                  concat=True)
+                                  discriminate_cls_sep=True)
+        elif args.variant == 'qagan-v2':
+            qconfig = QAGANConfig(backbone=backbone, 
+                                  tokenizer=tokenizer, 
+                                  use_discriminator=True,
+                                  discriminate_hidden_layers=True)
         else:
             raise ValueError
 
