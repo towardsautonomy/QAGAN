@@ -13,12 +13,12 @@
 # Experiments
 
 ## Definition of various variants
-| Variant     | Prediction Head | Discriminator | Attention-Based Pred Head | Conditional Pred Head | Embedding Dist Reg |
-| ----------- | --------------- | ------------- | ------------------------- | --------------------- | ------------------ |
-| baseline-v0 | default         | ✗             | ✗                         | ✗                     |  ✗                 |
-| baseline-v1 | 2 layer MLP     | ✗             | ✗                         | ✗                     |  ✗                 |
-| qagan-v0    | 2 layer MLP     | ✓             | ✗                         | ✗                     |  ✗                 |
-
+| Variant     | Prediction Head | Discriminator | Attention-Based Pred Head | Conditional Pred Head | Embedding Dist Reg | Include OOD in train |
+| ----------- | --------------- | ------------- | ------------------------- | --------------------- | ------------------ | ------------------   |
+| baseline-v0 | default         | ✗             | ✗                         | ✗                     |  ✗                 |   ✗                  |
+| baseline-v1 | 2 layer MLP     | ✗             | ✗                         | ✗                     |  ✗                 |   ✗                  |
+| qagan-v0    | 2 layer MLP     | ✓             | ✗                         | ✗                     |  ✗                 |   ✗                  |
+| baseline-v2 | 2 layer MPL     | ✗             | ✗                         | x                     |  x                 |   ✓                  | 
 ## Experiment Results
 | Variant     | Split           | F1          | EM          |  
 | ----------- | --------------- | ----------- | ----------- |
@@ -26,3 +26,5 @@
 | Baseline-v0 | oodomain_val    | 48.29       | 30.89       |
 | Baseline-v1 | indomain_val    | 70.65       | 54.67       |
 | Baseline-v1 | oodomain_val    | 48.53       | 34.03       |
+| Baseline-v2 | indomain_val    | 70.72       | 54.84       |
+| Baseline-v2 | oodomain_val    | 50.11       | 34.82       |
