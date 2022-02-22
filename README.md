@@ -15,10 +15,10 @@
 ## Definition of various variants
 | Variant     | Prediction Head | Discriminator | Attention-Based Pred Head | Conditional Pred Head | Embedding Dist Reg | Include OOD in train |
 | ----------- | --------------- | ------------- | ------------------------- | --------------------- | ------------------ | ------------------   |
-| baseline-v0 | default         | ✗             | ✗                         | ✗                     |  ✗                 |   ✗ 
-| baseline-v1 | 2 layer MLP     | ✗             | ✗                         | ✗                     |  ✗                 |   ✗ 
-| qagan-v0    | 2 layer MLP     | ✓             | ✗                         | ✗                     |  ✗                 |   ✗ 
-| baseline-v2 | 2 layer MPL     | ✗             | ✗                         | x                     |  x                 |   ✓ 
+| baseline-v0 | default         | ✗             | ✗                         | ✗                     |  ✗                 |   ✗                  |
+| baseline-v1 | 2 layer MLP     | ✗             | ✗                         | ✗                     |  ✗                 |   ✗                  |
+| qagan-v0    | 2 layer MLP     | ✓             | ✗                         | ✗                     |  ✗                 |   ✗                  |
+| baseline-v2 | 2 layer MPL     | ✗             | ✗                         | x                     |  x                 |   ✓                  | 
 ## Experiment Results
 | Variant     | Split           | F1          | EM          |  
 | ----------- | --------------- | ----------- | ----------- |
