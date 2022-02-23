@@ -4,6 +4,8 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--variant', type=str, choices=['baseline-v0', 
                                                         'baseline-v1', 
+                                                        'baseline-v3',
+                                                        'baseline-v4', 
                                                         'qagan-v0',
                                                         'qagan-v1',
                                                         'qagan-v2'])

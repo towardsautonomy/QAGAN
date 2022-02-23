@@ -29,6 +29,10 @@
 | baseline-v0 | oodomain_val    | ✗                    | 48.29       | 30.89       |
 | baseline-v1 | indomain_val    | ✗                    | 70.65       | 54.67       |
 | baseline-v1 | oodomain_val    | ✗                    | 48.53       | 34.03       |
+| baseline-v3 | indomain_val    | ✗                    | 69.34       | 53.57       |
+| baseline-v3 | oodomain_val    | ✗                    | 45.40       | 31.68       |
+| baseline-v4 | indomain_val    | ✗                    | 70.19       | 53.98       |
+| baseline-v4 | oodomain_val    | ✗                    | 48.00       | 32.20       |
 | qagan-v0    | indomain_val    | ✗                    | 70.20       | 54.24       |
 | qagan-v0    | oodomain_val    | ✗                    | 50.65       | 34.03       |
 | qagan-v0    | indomain_val    | ✓                    | 70.45       | 54.26       |
