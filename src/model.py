@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from transformers import DistilBertTokenizerFast
 from transformers import DistilBertForQuestionAnswering
 import pprint
+import math
 
 class QAGANConfig:
     """ QAGAN configuration """
@@ -12,13 +13,27 @@ class QAGANConfig:
     num_layers=3
     dropout=0.1
     disc_true_lambda=0.5
-    disc_fake_lambda=10.0
-    concat=False
+    disc_fake_lambda=0.5
+    discriminate_hidden_layers=False
+    discriminate_cls=False
+    discriminate_cls_sep=False
     use_discriminator=False
+    sequence_len=384
+    fake_discriminator_warmup_steps=10000
+    true_discriminator_every_n_steps=2
+    fake_discriminator_every_n_steps=5
+    max_steps = 250000
+    anneal = True
+    prediction_head = 'linear'
 
     def __init__(self, **kwargs):
         for k,v in kwargs.items():
             setattr(self, k, v)
+
+        # make sure only one of discriminate_hidden_layers, discriminate_cls,
+        # discriminate_cls_sep is true if use_discriminator is true
+        if self.use_discriminator:
+            assert sum([self.discriminate_hidden_layers, self.discriminate_cls, self.discriminate_cls_sep]) == 1
 
     def __str__(self):
         return pprint.pformat(self.__dict__)
@@ -39,7 +54,7 @@ class DomainDiscriminator(nn.Module):
         between different QA dataset domains 
     """
 
-    def __init__(self, num_classes=3, input_size=768 * 2,
+    def __init__(self, num_classes=3, input_size=768,
                  hidden_size=768, num_layers=3, dropout=0.1):
         super(DomainDiscriminator, self).__init__()
         self.num_layers = num_layers
@@ -64,6 +79,50 @@ class DomainDiscriminator(nn.Module):
         log_prob = F.log_softmax(logits, dim=1)
         return log_prob
 
+class MultiHeadedAttention(nn.Module):
+    """ Multi-Headed Encoder-Only Attention module """
+    
+    def __init__(self, num_heads, hidden_size, dropout=0.1):
+        super(MultiHeadedAttention, self).__init__()
+        assert hidden_size % num_heads == 0
+        self.num_heads = num_heads
+        self.hidden_size = hidden_size
+        self.dropout = dropout
+        self.head_dim = hidden_size // num_heads
+        self.scaling = self.head_dim ** -0.5
+
+        self.q_linear = nn.Linear(hidden_size, hidden_size)
+        self.k_linear = nn.Linear(hidden_size, hidden_size)
+        self.v_linear = nn.Linear(hidden_size, hidden_size)
+
+        self.out_linear = nn.Linear(hidden_size, hidden_size)
+
+    def forward(self, q, k, v, mask=None):
+        # q, k, v: batch_size x len_q x hidden_size
+        batch_size = q.size(0)
+        len_q = q.size(1)
+        len_k = k.size(1)
+        # perform attention on every head
+        head_q = self.q_linear(q).view(batch_size, len_q, self.num_heads, self.head_dim).transpose(1, 2)
+        head_k = self.k_linear(k).view(batch_size, len_k, self.num_heads, self.head_dim).transpose(1, 2)
+        head_v = self.v_linear(v).view(batch_size, len_k, self.num_heads, self.head_dim).transpose(1, 2)
+        # head_q, head_k, head_v: batch_size x num_heads x len_q x head_dim
+        # compute attention score
+        scores = torch.matmul(head_q, head_k.transpose(-2, -1)) * self.scaling
+        if mask is not None:
+            mask = mask.unsqueeze(1).expand(batch_size, len_k, len_q)
+            scores = scores.masked_fill(mask, -1e9)
+        # compute attention probability
+        weights = F.softmax(scores, dim=-1)
+        # apply dropout
+        weights = F.dropout(weights, p=self.dropout, training=self.training)
+        # compute context vector
+        contexts = torch.matmul(weights, head_v)
+        # apply final linear layer
+        contexts = contexts.transpose(1, 2).contiguous().view(batch_size, len_q, self.hidden_size)
+
+        out = self.out_linear(contexts)
+        return out
 class QAPredictionHead(nn.Module):
     """ Prediction head for generating start and end logits """
 
@@ -90,6 +149,78 @@ class QAPredictionHead(nn.Module):
         x = self.qa_logits(x)
         return x
 
+class QAConditionalAttPredictionHead(nn.Module):
+    """ Conditional prediction head for generating start and end logits.
+        hidden state is passed through a self-attention layer, which is 
+        then used to generate start logit. Output of this attention layer
+        is then concatenated with the hidden state and passed through another
+        attention layer to generate end logit. 
+    """
+    
+    def __init__(self, input_size, hidden_size=64, logit_size=1):
+        super(QAConditionalAttPredictionHead, self).__init__()
+        self.hidden_size = hidden_size
+        self.linear = nn.Linear(input_size, hidden_size)
+        self.attn_start = MultiHeadedAttention(num_heads=8, hidden_size=hidden_size)
+        self.attn_end = MultiHeadedAttention(num_heads=8, hidden_size=2*hidden_size)
+        self.qa_start_logit = nn.Linear(hidden_size, logit_size)
+        self.qa_end_logit = nn.Linear(2*hidden_size, logit_size)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.1, inplace=False)
+        self.init_weights()
+
+    def init_weights(self):
+        nn.init.xavier_uniform_(self.linear.weight)
+        nn.init.zeros_(self.linear.bias)
+        nn.init.xavier_uniform_(self.qa_start_logit.weight)
+        nn.init.zeros_(self.qa_start_logit.bias)
+        nn.init.xavier_uniform_(self.qa_end_logit.weight)
+        nn.init.zeros_(self.qa_end_logit.bias)
+
+    def forward(self, x, mask=None):
+        x = self.linear(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+        x_att_start = self.attn_start(x, x, x, mask=mask)
+        x_start_logit = self.qa_start_logit(x_att_start)
+        x = torch.cat([x, x_att_start], dim=-1)
+        x_att_end = self.attn_end(x, x, x, mask=mask)
+        x_end_logit = self.qa_end_logit(x_att_end)
+        # concatenate start and end logits
+        logits = torch.cat([x_start_logit, x_end_logit], dim=-1)
+        return logits
+
+class QAConditionalPredictionHead(nn.Module):
+    """ Conditional Linear Prediction Head """
+    
+    def __init__(self, input_size, hidden_size=64, logit_size=1):
+        super(QAConditionalPredictionHead, self).__init__()
+        self.hidden_size = hidden_size
+        self.linear = nn.Linear(input_size, hidden_size)
+        self.qa_start_logit = nn.Linear(hidden_size, logit_size)
+        self.qa_end_logit = nn.Linear(hidden_size+1, logit_size)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.1, inplace=False)
+        self.init_weights()
+
+    def init_weights(self):
+        nn.init.xavier_uniform_(self.linear.weight)
+        nn.init.zeros_(self.linear.bias)
+        nn.init.xavier_uniform_(self.qa_start_logit.weight)
+        nn.init.zeros_(self.qa_start_logit.bias)
+        nn.init.xavier_uniform_(self.qa_end_logit.weight)
+        nn.init.zeros_(self.qa_end_logit.bias)
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+        x_start = self.qa_start_logit(x)
+        x_end = self.qa_end_logit(torch.cat([x, x_start], dim=-1))
+        # x_end = self.qa_end_logit(torch.cat([x, x_start.unsqueeze(-1)], dim=-1))
+        # concatenate start and end logits
+        logits = torch.cat([x_start, x_end], dim=-1)
+        return logits
 class QAGAN(nn.Module):
     """ QAGAN model """
 
@@ -99,11 +230,30 @@ class QAGAN(nn.Module):
         self.backbone = config.backbone
         self.tokenizer = config.tokenizer
         self.hidden_size = self.backbone.config.hidden_size
+        self.anneal = config.anneal
+        self.max_steps = config.max_steps
+        self.step = 0
 
         # define prediction head
-        self.qa_outputs = QAPredictionHead(self.hidden_size)
-        # define discriminator
-        input_size = self.hidden_size if not config.concat else 2 * self.hidden_size
+        if config.prediction_head == 'linear':
+            self.qa_outputs = QAPredictionHead(self.hidden_size)
+        elif config.prediction_head == 'conditional_linear':
+            self.qa_outputs = QAConditionalPredictionHead(self.hidden_size)
+        elif config.prediction_head == 'conditional_attention':
+            self.qa_outputs = QAConditionalAttPredictionHead(self.hidden_size)
+        else:
+            raise ValueError('Invalid prediction head type')
+
+        # define input size
+        input_size = self.hidden_size
+        if config.discriminate_cls:
+            input_size = self.hidden_size
+        elif config.discriminate_cls_sep:
+            input_size = self.hidden_size * 2
+        elif config.discriminate_hidden_layers:
+            input_size = self.hidden_size * config.sequence_len
+
+        # idefine discriminator
         self.discriminator = DomainDiscriminator(num_classes=config.num_datasets,
                                                  input_size=input_size,
                                                  hidden_size=self.hidden_size,
@@ -113,7 +263,7 @@ class QAGAN(nn.Module):
         self.num_classes = config.num_datasets
         self.disc_true_lambda = config.disc_true_lambda
         self.disc_fake_lambda = config.disc_fake_lambda
-        self.concat = config.concat
+        self.discriminate_cls_sep = config.discriminate_cls_sep
         self.sep_id = self.tokenizer.sep_token_id
 
     # only for prediction
@@ -167,44 +317,71 @@ class QAGAN(nn.Module):
                                     input_ids, sequence_output)
 
             # add discriminator loss
-            total_loss += disc_true + disc_fake
+            if self.step % self.config.true_discriminator_every_n_steps == 0:
+                total_loss += disc_true
+            if self.step >= self.config.fake_discriminator_warmup_steps and \
+               self.step % self.config.fake_discriminator_every_n_steps == 0:
+                total_loss += disc_fake
             loss_dict['disc_true_loss'] = disc_true.item()
             loss_dict['disc_fake_loss'] = disc_fake.item()
 
+        self.step += 1
         return QAGANPredictions(loss=total_loss, 
                                 start_logits=start_logits,
                                 end_logits=end_logits,
                                 loss_dict=loss_dict)
 
     def forward_discriminator_true(self, input_ids, sequence_output, labels):
+        B, T, H = sequence_output.shape
         with torch.no_grad():
             cls_embedding = sequence_output[:, 0]  # [b, d] : [CLS] representation
-            if self.concat:
+            if self.config.discriminate_cls_sep:
                 sep_embedding = self.get_sep_embedding(input_ids, sequence_output)
                 hidden = torch.cat([cls_embedding, sep_embedding], dim=-1)  # [b, 2*d]
+            elif self.config.discriminate_hidden_layers:
+                hidden = sequence_output.view(B, -1)  # [b, T*d]
             else:
                 hidden = cls_embedding
-        log_prob = self.discriminator(hidden.detach())
+        log_prob = self.discriminator(hidden.detach().view(B, -1))
         criterion = nn.NLLLoss(reduction='mean')
-        loss = self.disc_true_lambda * criterion(log_prob, labels)
+        anneal_rate = self.anneal_tanh()
+        loss = self.disc_fake_lambda * criterion(log_prob, labels)
+        if self.anneal:
+            loss = loss * anneal_rate
 
         return loss
 
     def forward_discriminator_fake(self, input_ids, sequence_output):
+        B, T, H = sequence_output.shape
         cls_embedding = sequence_output[:, 0] # [b, d] : [CLS] representation
-        if self.concat:
+        if self.config.discriminate_cls_sep:
             sep_embedding = self.get_sep_embedding(input_ids, sequence_output)
             hidden = torch.cat([cls_embedding, sep_embedding], dim=1)
+        elif self.config.discriminate_hidden_layers:
+            hidden = sequence_output.view(B, -1)
         else:
             hidden = sequence_output[:, 0]  
         log_prob = self.discriminator(hidden)
-        targets = torch.ones_like(log_prob) * (1 / self.num_classes)
-        # As with NLLLoss, the input given is expected to contain log-probabilities
-        # and is not restricted to a 2D Tensor. The targets are given as probabilities
-        kl_criterion = nn.KLDivLoss(reduction="batchmean")
-        kld_loss = self.disc_fake_lambda * kl_criterion(log_prob, targets)
+        # set random targets
+        targets = torch.randint(0, self.num_classes, (B,), dtype=torch.long, device=input_ids.device)
+        criterion = nn.NLLLoss(reduction='mean')
+        anneal_rate = self.anneal_tanh()
+        loss = self.disc_fake_lambda * criterion(log_prob, targets)
+        if self.anneal:
+            loss = loss * anneal_rate
 
-        return kld_loss
+        return loss
+
+        # targets = torch.ones_like(log_prob) * (1 / self.num_classes)
+        # # As with NLLLoss, the input given is expected to contain log-probabilities
+        # # and is not restricted to a 2D Tensor. The targets are given as probabilities
+        # kl_criterion = nn.KLDivLoss(reduction="batchmean")
+        # anneal_rate = self.anneal_tanh()
+        # kld_loss = self.disc_fake_lambda * kl_criterion(log_prob, targets)
+        # if self.anneal:
+        #     kld_loss = kld_loss * anneal_rate
+
+        # return kld_loss
 
     def get_sep_embedding(self, input_ids, sequence_output):
         batch_size = input_ids.size(0)
@@ -232,3 +409,11 @@ class QAGAN(nn.Module):
         else:
             print("checkpoint '{}' does not exist".format(path))
         return self
+
+    # tanh annealing function
+    # this function ramps up from 0 to 1 in tanh(x) between the steps: fake_discriminator_warmup_steps and self.config.max_steps)
+    def anneal_tanh(self):
+        return ((math.tanh((2.0 * ((self.step * 2.0 - 
+                                    ((self.config.max_steps + self.config.fake_discriminator_warmup_steps))
+                                  )) /  
+                                  (self.config.max_steps - self.config.fake_discriminator_warmup_steps))) + 1.0) / 2.0)

@@ -4,8 +4,11 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--variant', type=str, choices=['baseline-v0', 
                                                         'baseline-v1', 
+                                                        'baseline-v3',
+                                                        'baseline-v4', 
                                                         'qagan-v0',
-                                                        'qagan-v1'])
+                                                        'qagan-v1',
+                                                        'qagan-v2'])
     parser.add_argument('--batch-size', type=int, default=16)
     parser.add_argument('--num-epochs', type=int, default=3)
     parser.add_argument('--lr', type=float, default=3e-5)

@@ -22,7 +22,7 @@ def main():
     if args.variant == 'baseline-v0':
         tokenizer = DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased')
         model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
-    elif 'qagan' in args.variant:
+    else:
         config = DistilBertConfig()
         config.output_hidden_states = False
         config.output_attentions = False
@@ -31,15 +31,29 @@ def main():
         if args.variant == 'baseline-v1':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer)
+        elif args.variant == 'baseline-v3':
+            qconfig = QAGANConfig(backbone=backbone, 
+                                  tokenizer=tokenizer,
+                                  prediction_head='conditional_attention')
+        elif args.variant == 'baseline-v4':
+            qconfig = QAGANConfig(backbone=backbone, 
+                                  tokenizer=tokenizer,
+                                  prediction_head='conditional_linear')
         elif args.variant == 'qagan-v0':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
-                                  use_discriminator=True)
+                                  use_discriminator=True,
+                                  discriminate_cls=True)
         elif args.variant == 'qagan-v1':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
                                   use_discriminator=True,
-                                  concat=True)
+                                  discriminate_cls_sep=True)
+        elif args.variant == 'qagan-v2':
+            qconfig = QAGANConfig(backbone=backbone, 
+                                  tokenizer=tokenizer, 
+                                  use_discriminator=True,
+                                  discriminate_hidden_layers=True)
         else:
             raise ValueError
 
@@ -49,8 +63,6 @@ def main():
             model = QAGAN(config=qconfig).from_pretrained(checkpoint_path)
         else:
             model = QAGAN(config=qconfig)
-    else:
-        raise ValueError
 
     # mode of operation
     if args.do_train:
@@ -70,7 +82,7 @@ def main():
     elif args.do_eval:
         # load pretrained model
         checkpoint_path = os.path.join(args.save_dir, 'checkpoint')
-        if args.variant == 'baseline':
+        if args.variant == 'baseline-v0':
             model = DistilBertForQuestionAnswering.from_pretrained(checkpoint_path)
         else:
             model = QAGAN(config=qconfig).from_pretrained(checkpoint_path)
