@@ -31,14 +31,14 @@ def main():
         if args.variant == 'baseline-v1':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer)
-        elif args.variant == 'baseline-v3':
-            qconfig = QAGANConfig(backbone=backbone, 
-                                  tokenizer=tokenizer,
-                                  prediction_head='conditional_attention')
-        elif args.variant == 'baseline-v4':
+        elif args.variant == 'baseline-v1-conditional':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer,
                                   prediction_head='conditional_linear')
+        elif args.variant == 'baseline-v1-conditional-att':
+            qconfig = QAGANConfig(backbone=backbone, 
+                                  tokenizer=tokenizer,
+                                  prediction_head='conditional_attention')
         elif args.variant == 'qagan-v0':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
@@ -54,13 +54,27 @@ def main():
                                   tokenizer=tokenizer, 
                                   use_discriminator=True,
                                   discriminate_hidden_layers=True)
+        elif args.variant == 'qagan-v0-conditional-att':
+            qconfig = QAGANConfig(backbone=backbone, 
+                                  tokenizer=tokenizer, 
+                                  use_discriminator=True,
+                                  discriminate_cls=True,
+                                  prediction_head='conditional_attention')
+        elif args.variant == 'qagan-v0-conditional':
+            qconfig = QAGANConfig(backbone=backbone, 
+                                  tokenizer=tokenizer, 
+                                  use_discriminator=True,
+                                  discriminate_cls=True,
+                                  prediction_head='conditional_linear')
         else:
             raise ValueError
 
         # get the QAGAN model
-        if args.load_pretrained:
-            checkpoint_path = os.path.join(args.save_dir, 'checkpoint')
-            model = QAGAN(config=qconfig).from_pretrained(checkpoint_path)
+        if args.finetune or args.load_pretrained:
+            assert args.pretrained_model != 'none', 'Must specify a pretrained model to load'
+            qconfig['anneal'] = False
+            qconfig['fake_discriminator_warmup_steps'] = 0
+            model = QAGAN(config=qconfig).from_pretrained(args.pretrained_model)
         else:
             model = QAGAN(config=qconfig)
 

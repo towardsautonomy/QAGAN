@@ -177,9 +177,9 @@ class AverageMeter:
 class QADataset(Dataset):
     def __init__(self, encodings, train=True):
         self.encodings = encodings
-        self.keys = ['input_ids', 'attention_mask']
+        self.keys = ['input_ids', 'attention_mask', 'labels']
         if train:
-            self.keys += ['start_positions', 'end_positions', 'labels']
+            self.keys += ['start_positions', 'end_positions']
         assert(all(key in self.encodings for key in self.keys))
 
     def __getitem__(self, idx):

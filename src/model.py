@@ -19,9 +19,9 @@ class QAGANConfig:
     discriminate_cls_sep=False
     use_discriminator=False
     sequence_len=384
-    fake_discriminator_warmup_steps=10000
-    true_discriminator_every_n_steps=2
-    fake_discriminator_every_n_steps=5
+    fake_discriminator_warmup_steps=1000
+    true_discriminator_every_n_steps=1
+    fake_discriminator_every_n_steps=2
     max_steps = 250000
     anneal = True
     prediction_head = 'linear'
@@ -35,6 +35,14 @@ class QAGANConfig:
         if self.use_discriminator:
             assert sum([self.discriminate_hidden_layers, self.discriminate_cls, self.discriminate_cls_sep]) == 1
 
+    # method for item assignment
+    def __setitem__(self, key, value):
+        setattr(self, key, value)
+
+    # method for item access
+    def __getitem__(self, key):
+        return getattr(self, key)
+
     def __str__(self):
         return pprint.pformat(self.__dict__)
 
@@ -44,10 +52,22 @@ class QAGANPredictions:
     def __init__(self, **kwargs):
         for k,v in kwargs.items():
             setattr(self, k, v)
-        self.idx2key = {0:'loss', 1:'start_logits', 2:'end_logits', 3:'loss_dict'}
+        self.idx2key = {0:'loss', 
+                        1:'start_logits', 
+                        2:'end_logits', 
+                        3:'loss_dict', 
+                        4:'hidden_states'}
 
+    # method for item assignment
+    def __setitem__(self, key, value):
+        setattr(self, key, value)
+
+    # method for item access
     def __getitem__(self, i):
         return getattr(self, self.idx2key[i])
+
+    def __str__(self):
+        return pprint.pformat(self.__dict__)
 
 class DomainDiscriminator(nn.Module):
     """ Domain discriminator for discriminating 
@@ -217,10 +237,10 @@ class QAConditionalPredictionHead(nn.Module):
         x = self.dropout(x)
         x_start = self.qa_start_logit(x)
         x_end = self.qa_end_logit(torch.cat([x, x_start], dim=-1))
-        # x_end = self.qa_end_logit(torch.cat([x, x_start.unsqueeze(-1)], dim=-1))
         # concatenate start and end logits
         logits = torch.cat([x_start, x_end], dim=-1)
         return logits
+        
 class QAGAN(nn.Module):
     """ QAGAN model """
 
@@ -232,7 +252,7 @@ class QAGAN(nn.Module):
         self.hidden_size = self.backbone.config.hidden_size
         self.anneal = config.anneal
         self.max_steps = config.max_steps
-        self.step = 0
+        self.disc_step = 0
 
         # define prediction head
         if config.prediction_head == 'linear':
@@ -268,7 +288,9 @@ class QAGAN(nn.Module):
 
     # only for prediction
     def forward(self, input_ids, attention_mask,
-                start_positions=None, end_positions=None, labels=None):
+                start_positions=None, end_positions=None, 
+                labels=None, discriminator=False,
+                return_hidden_states=False):
 
         # forward pass to get logits predictions and loss
         def forward_qa(input_ids, attention_mask,
@@ -307,32 +329,43 @@ class QAGAN(nn.Module):
         total_loss = qa_loss
         # discriminator
         if self.config.use_discriminator and \
-           (start_positions is not None) and (end_positions is not None):
-            # train discriminator to predict domain
-            disc_true = self.forward_discriminator_true(
-                                    input_ids, sequence_output, labels)
+           (start_positions is not None) and \
+           (end_positions is not None):
+            # train discriminator with true labels
+            if discriminator:
+                # train discriminator to predict domain
+                disc_loss = self.forward_discriminator_true(
+                                        input_ids, sequence_output, labels)
+                # add discriminator loss
+                if self.disc_step % self.config.true_discriminator_every_n_steps == 0:
+                    total_loss += disc_loss
+                loss_dict['disc_loss_true'] = disc_loss.item()
+                self.disc_step += 1
+            else:
+                # train LM to fool discriminator
+                disc_loss = self.forward_discriminator_fake(
+                                        input_ids, sequence_output)
+                # add discriminator loss
+                if self.disc_step >= self.config.fake_discriminator_warmup_steps and \
+                   self.disc_step % self.config.fake_discriminator_every_n_steps == 0:
+                    total_loss += disc_loss
+                loss_dict['disc_loss_fake'] = disc_loss.item()
 
-            # train LM to fool discriminator
-            disc_fake = self.forward_discriminator_fake(
-                                    input_ids, sequence_output)
-
-            # add discriminator loss
-            if self.step % self.config.true_discriminator_every_n_steps == 0:
-                total_loss += disc_true
-            if self.step >= self.config.fake_discriminator_warmup_steps and \
-               self.step % self.config.fake_discriminator_every_n_steps == 0:
-                total_loss += disc_fake
-            loss_dict['disc_true_loss'] = disc_true.item()
-            loss_dict['disc_fake_loss'] = disc_fake.item()
-
-        self.step += 1
-        return QAGANPredictions(loss=total_loss, 
-                                start_logits=start_logits,
-                                end_logits=end_logits,
-                                loss_dict=loss_dict)
+        if return_hidden_states:
+            return QAGANPredictions(loss=total_loss, 
+                                    start_logits=start_logits,
+                                    end_logits=end_logits,
+                                    loss_dict=loss_dict,
+                                    hidden_states=sequence_output.detach())
+        else:
+            return QAGANPredictions(loss=total_loss, 
+                                    start_logits=start_logits,
+                                    end_logits=end_logits,
+                                    loss_dict=loss_dict)
 
     def forward_discriminator_true(self, input_ids, sequence_output, labels):
         B, T, H = sequence_output.shape
+        # do not update the language model
         with torch.no_grad():
             cls_embedding = sequence_output[:, 0]  # [b, d] : [CLS] representation
             if self.config.discriminate_cls_sep:
@@ -344,10 +377,7 @@ class QAGAN(nn.Module):
                 hidden = cls_embedding
         log_prob = self.discriminator(hidden.detach().view(B, -1))
         criterion = nn.NLLLoss(reduction='mean')
-        anneal_rate = self.anneal_tanh()
-        loss = self.disc_fake_lambda * criterion(log_prob, labels)
-        if self.anneal:
-            loss = loss * anneal_rate
+        loss = self.disc_true_lambda * criterion(log_prob, labels)
 
         return loss
 
@@ -362,26 +392,27 @@ class QAGAN(nn.Module):
         else:
             hidden = sequence_output[:, 0]  
         log_prob = self.discriminator(hidden)
-        # set random targets
-        targets = torch.randint(0, self.num_classes, (B,), dtype=torch.long, device=input_ids.device)
-        criterion = nn.NLLLoss(reduction='mean')
-        anneal_rate = self.anneal_tanh()
-        loss = self.disc_fake_lambda * criterion(log_prob, targets)
-        if self.anneal:
-            loss = loss * anneal_rate
 
-        return loss
-
-        # targets = torch.ones_like(log_prob) * (1 / self.num_classes)
-        # # As with NLLLoss, the input given is expected to contain log-probabilities
-        # # and is not restricted to a 2D Tensor. The targets are given as probabilities
-        # kl_criterion = nn.KLDivLoss(reduction="batchmean")
+        # # set random targets
+        # targets = torch.randint(0, self.num_classes, (B,), dtype=torch.long, device=input_ids.device)
+        # criterion = nn.NLLLoss(reduction='mean')
         # anneal_rate = self.anneal_tanh()
-        # kld_loss = self.disc_fake_lambda * kl_criterion(log_prob, targets)
+        # loss = self.disc_fake_lambda * criterion(log_prob, targets)
         # if self.anneal:
-        #     kld_loss = kld_loss * anneal_rate
+        #     loss = loss * anneal_rate
 
-        # return kld_loss
+        # return loss
+
+        targets = torch.ones_like(log_prob) * (1 / self.num_classes)
+        # As with NLLLoss, the input given is expected to contain log-probabilities
+        # and is not restricted to a 2D Tensor. The targets are given as probabilities
+        kl_criterion = nn.KLDivLoss(reduction="batchmean")
+        anneal_rate = self.anneal_tanh()
+        kld_loss = self.disc_fake_lambda * kl_criterion(log_prob, targets)
+        if self.anneal:
+            kld_loss = kld_loss * anneal_rate
+
+        return kld_loss
 
     def get_sep_embedding(self, input_ids, sequence_output):
         batch_size = input_ids.size(0)
@@ -413,7 +444,8 @@ class QAGAN(nn.Module):
     # tanh annealing function
     # this function ramps up from 0 to 1 in tanh(x) between the steps: fake_discriminator_warmup_steps and self.config.max_steps)
     def anneal_tanh(self):
-        return ((math.tanh((2.0 * ((self.step * 2.0 - 
-                                    ((self.config.max_steps + self.config.fake_discriminator_warmup_steps))
-                                  )) /  
-                                  (self.config.max_steps - self.config.fake_discriminator_warmup_steps))) + 1.0) / 2.0)
+        return ((math.tanh((2.0 * ((self.disc_step * 2.0 - 
+                                   ((self.config.max_steps + self.config.fake_discriminator_warmup_steps))
+                                   )
+                                  ) / (self.config.max_steps - self.config.fake_discriminator_warmup_steps))
+                          ) + 1.0) / 2.0)
