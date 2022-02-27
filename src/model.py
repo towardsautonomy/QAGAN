@@ -381,7 +381,7 @@ class QAGAN(nn.Module):
 
         return loss
 
-    def forward_discriminator_fake(self, input_ids, sequence_output):
+    def forward_discriminator_fake(self, input_ids, sequence_output, loss='nll'):
         B, T, H = sequence_output.shape
         cls_embedding = sequence_output[:, 0] # [b, d] : [CLS] representation
         if self.config.discriminate_cls_sep:
@@ -393,26 +393,31 @@ class QAGAN(nn.Module):
             hidden = sequence_output[:, 0]  
         log_prob = self.discriminator(hidden)
 
-        # # set random targets
-        # targets = torch.randint(0, self.num_classes, (B,), dtype=torch.long, device=input_ids.device)
-        # criterion = nn.NLLLoss(reduction='mean')
-        # anneal_rate = self.anneal_tanh()
-        # loss = self.disc_fake_lambda * criterion(log_prob, targets)
-        # if self.anneal:
-        #     loss = loss * anneal_rate
+        if loss == 'nll':
+            # set random targets
+            targets = torch.randint(0, self.num_classes, (B,), dtype=torch.long, device=input_ids.device)
+            criterion = nn.NLLLoss(reduction='mean')
+            anneal_rate = self.anneal_tanh()
+            loss = self.disc_fake_lambda * criterion(log_prob, targets)
+            if self.anneal:
+                loss = loss * anneal_rate
 
-        # return loss
+            return loss
 
-        targets = torch.ones_like(log_prob) * (1 / self.num_classes)
-        # As with NLLLoss, the input given is expected to contain log-probabilities
-        # and is not restricted to a 2D Tensor. The targets are given as probabilities
-        kl_criterion = nn.KLDivLoss(reduction="batchmean")
-        anneal_rate = self.anneal_tanh()
-        kld_loss = self.disc_fake_lambda * kl_criterion(log_prob, targets)
-        if self.anneal:
-            kld_loss = kld_loss * anneal_rate
+        elif loss == 'kld':
+            targets = torch.ones_like(log_prob) * (1 / self.num_classes)
+            # As with NLLLoss, the input given is expected to contain log-probabilities
+            # and is not restricted to a 2D Tensor. The targets are given as probabilities
+            kl_criterion = nn.KLDivLoss(reduction="batchmean")
+            anneal_rate = self.anneal_tanh()
+            kld_loss = self.disc_fake_lambda * kl_criterion(log_prob, targets)
+            if self.anneal:
+                kld_loss = kld_loss * anneal_rate
 
-        return kld_loss
+            return kld_loss
+
+        else:
+            raise ValueError("Unknown loss type: {}".format(loss))
 
     def get_sep_embedding(self, input_ids, sequence_output):
         batch_size = input_ids.size(0)
