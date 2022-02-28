@@ -8,11 +8,10 @@ reset=\\033[0m
 
 # function to print usage
 print_usage() {
-    echo -e "    -> Usage: ./run_experiments.sh                     \\
-                        {train|finetune|evaluate|test} \\
-                        {variant}                      \\
-                        {experiment_name}              \\
-                        {pretrained_checkpoint}${reset}"
+    echo -e "Usage: $0 train {variant} {experiment_name}"
+    echo -e "       $0 finetune {variant} {experiment_name} {pretrained_ckpt_pathn"
+    echo -e "       $0 evaluate {variant} {experiment_name}"
+    echo -e "       $0 evaluate {test} {experiment_name}${reset}"
 }
 
 # experiment mode
@@ -38,14 +37,14 @@ if [ "$MODE" == "train" ]; then
     # train
     python run.py --do-train \
                   --variant ${variant} \
-                  --eval-every 2000 --run-name ${experiment} --recompute-features
+                  --eval-every 2000 --run-name ${experiment} #--recompute-features
 
 elif [ "$MODE" == "finetune" ]; then
     # train
     python run.py --do-train \
                   --variant ${variant} \
                   --eval-every 10 --num-epochs 10 --run-name ${experiment} \
-                  --finetune --pretrained-model=${pretrained_ckpt} --recompute-features
+                  --finetune --pretrained-model=${pretrained_ckpt} #--recompute-features
 
 elif [ "$MODE" == "evaluate" ]; then
     # evaluate

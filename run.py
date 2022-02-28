@@ -59,6 +59,12 @@ def main():
                                   use_discriminator=True,
                                   discriminate_cls=True,
                                   prediction_head='conditional_attention')
+        elif args.variant == 'qagan-cond-tfm':
+            qconfig = QAGANConfig(backbone=backbone, 
+                                  tokenizer=tokenizer, 
+                                  use_discriminator=True,
+                                  discriminate_cls=True,
+                                  prediction_head='conditional_transformers')
         else:
             raise ValueError
 

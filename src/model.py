@@ -10,7 +10,7 @@ import math
 class QAGANConfig:
     """ QAGAN configuration """
     num_datasets=3
-    num_layers=3
+    num_discriminator_layers=3
     dropout=0.1
     disc_true_lambda=0.5
     disc_fake_lambda=0.5
@@ -99,11 +99,11 @@ class DomainDiscriminator(nn.Module):
         log_prob = F.log_softmax(logits, dim=1)
         return log_prob
 
-class MultiHeadedAttention(nn.Module):
+class MultiHeadedSelfAttention(nn.Module):
     """ Multi-Headed Encoder-Only Attention module """
     
     def __init__(self, num_heads, hidden_size, dropout=0.1):
-        super(MultiHeadedAttention, self).__init__()
+        super(MultiHeadedSelfAttention, self).__init__()
         assert hidden_size % num_heads == 0
         self.num_heads = num_heads
         self.hidden_size = hidden_size
@@ -143,6 +143,94 @@ class MultiHeadedAttention(nn.Module):
 
         out = self.out_linear(contexts)
         return out
+
+class TransformersEncoder(nn.Module):
+    """ Transformers encoder layer """
+
+    def __init__(self, hidden_size, num_heads, dropout=0.1):
+        super(TransformersEncoder, self).__init__()
+        self.attention = MultiHeadedSelfAttention(num_heads, hidden_size, dropout)
+        self.feed_forward = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size)
+        )
+        self.norm1 = nn.LayerNorm(hidden_size)
+        self.dropout1 = nn.Dropout(dropout)
+        self.norm2 = nn.LayerNorm(hidden_size)
+        self.dropout2 = nn.Dropout(dropout)
+
+    def forward(self, x, mask=None):
+        # x: batch_size x len_q x hidden_size
+        # mask: batch_size x len_q x len_k
+        # compute attention
+        x = self.attention(x, x, x, mask)
+        # add residual connection
+        x = x + x
+        # apply layer normalization
+        x = self.norm1(x)
+        # apply dropout
+        x = self.dropout1(x)
+        # apply feed forward
+        x = self.feed_forward(x)
+        # add residual connection
+        x = x + x
+        # apply layer normalization
+        x = self.norm2(x)
+        # apply dropout
+        x = self.dropout2(x)
+        return x
+        
+class TransformersDecoder(nn.Module):
+    """ Transformers decoder layer """
+
+    def __init__(self, hidden_size, num_heads, dropout=0.1):
+        super(TransformersDecoder, self).__init__()
+        self.self_attention = MultiHeadedSelfAttention(num_heads, hidden_size, dropout)
+        self.cross_attention = MultiHeadedSelfAttention(num_heads, hidden_size, dropout)
+        self.feed_forward = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size)
+        )
+        self.norm1 = nn.LayerNorm(hidden_size)
+        self.dropout1 = nn.Dropout(dropout)
+        self.norm2 = nn.LayerNorm(hidden_size)
+        self.dropout2 = nn.Dropout(dropout)
+        self.norm3 = nn.LayerNorm(hidden_size)
+        self.dropout3 = nn.Dropout(dropout)
+
+    def forward(self, x, encoder_out, mask=None):
+        # x: batch_size x len_q x hidden_size
+        # encoder_out: batch_size x len_k x hidden_size
+        # mask: batch_size x len_q x len_k
+        # compute attention
+        x = self.self_attention(x, x, x, mask)
+        # add residual connection
+        x = x + x
+        # apply layer normalization
+        x = self.norm1(x)
+        # apply dropout
+        x = self.dropout1(x)
+        # compute attention
+        x = self.cross_attention(q=x, k=encoder_out, v=encoder_out, mask=mask)
+        # add residual connection
+        x = x + x
+        # apply layer normalization
+        x = self.norm2(x)
+        # apply dropout
+        x = self.dropout2(x)
+        # apply feed forward
+        x = self.feed_forward(x)
+        # add residual connection
+        x = x + x
+        # apply layer normalization
+        x = self.norm3(x)
+        # apply dropout
+        x = self.dropout3(x)
+
+        return x
+
 class QAPredictionHead(nn.Module):
     """ Prediction head for generating start and end logits """
 
@@ -168,47 +256,6 @@ class QAPredictionHead(nn.Module):
         x = self.dropout(x)
         x = self.qa_logits(x)
         return x
-
-class QAConditionalAttPredictionHead(nn.Module):
-    """ Conditional prediction head for generating start and end logits.
-        hidden state is passed through a self-attention layer, which is 
-        then used to generate start logit. Output of this attention layer
-        is then concatenated with the hidden state and passed through another
-        attention layer to generate end logit. 
-    """
-    
-    def __init__(self, input_size, hidden_size=64, logit_size=1):
-        super(QAConditionalAttPredictionHead, self).__init__()
-        self.hidden_size = hidden_size
-        self.linear = nn.Linear(input_size, hidden_size)
-        self.attn_start = MultiHeadedAttention(num_heads=8, hidden_size=hidden_size)
-        self.attn_end = MultiHeadedAttention(num_heads=8, hidden_size=2*hidden_size)
-        self.qa_start_logit = nn.Linear(hidden_size, logit_size)
-        self.qa_end_logit = nn.Linear(2*hidden_size, logit_size)
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(0.1, inplace=False)
-        self.init_weights()
-
-    def init_weights(self):
-        nn.init.xavier_uniform_(self.linear.weight)
-        nn.init.zeros_(self.linear.bias)
-        nn.init.xavier_uniform_(self.qa_start_logit.weight)
-        nn.init.zeros_(self.qa_start_logit.bias)
-        nn.init.xavier_uniform_(self.qa_end_logit.weight)
-        nn.init.zeros_(self.qa_end_logit.bias)
-
-    def forward(self, x, mask=None):
-        x = self.linear(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-        x_att_start = self.attn_start(x, x, x, mask=mask)
-        x_start_logit = self.qa_start_logit(x_att_start)
-        x = torch.cat([x, x_att_start], dim=-1)
-        x_att_end = self.attn_end(x, x, x, mask=mask)
-        x_end_logit = self.qa_end_logit(x_att_end)
-        # concatenate start and end logits
-        logits = torch.cat([x_start_logit, x_end_logit], dim=-1)
-        return logits
 
 class QAConditionalPredictionHead(nn.Module):
     """ Conditional Linear Prediction Head """
@@ -240,6 +287,84 @@ class QAConditionalPredictionHead(nn.Module):
         # concatenate start and end logits
         logits = torch.cat([x_start, x_end], dim=-1)
         return logits
+
+class QAConditionalAttPredictionHead(nn.Module):
+    """ Conditional prediction head for generating start and end logits.
+        hidden state is passed through a the transformers encoder layer, which is 
+        then used to generate start logit. Output of this encoder
+        is then concatenated with the hidden state and passed through another
+        transformers encoder to generate end logit. 
+    """
+    
+    def __init__(self, hidden_size=64, logit_size=1):
+        super(QAConditionalAttPredictionHead, self).__init__()
+        self.hidden_size = hidden_size
+        self.attn_start = TransformersEncoder(num_heads=8, hidden_size=hidden_size)
+        self.attn_end = TransformersEncoder(num_heads=8, hidden_size=2*hidden_size)
+        self.feed_forward = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size)
+        )
+        self.qa_start_logit = nn.Linear(hidden_size, logit_size)
+        self.qa_end_logit = nn.Linear(hidden_size+1, logit_size)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.1, inplace=False)
+        self.init_weights()
+
+    def init_weights(self):
+        nn.init.xavier_uniform_(self.qa_start_logit.weight)
+        nn.init.zeros_(self.qa_start_logit.bias)
+        nn.init.xavier_uniform_(self.qa_end_logit.weight)
+        nn.init.zeros_(self.qa_end_logit.bias)
+
+    def forward(self, x, mask=None):
+        x_att_start = self.attn_start(x, mask=mask)
+        x_start_logit = self.qa_start_logit(x_att_start)
+        x = torch.cat([x, x_att_start], dim=-1)
+        x_att_end = self.attn_end(x, mask=mask)
+        x_end_logit = self.qa_end_logit(x_att_end)
+        # concatenate start and end logits
+        logits = torch.cat([x_start_logit, x_end_logit], dim=-1)
+        return logits
+
+class QAConditionalTransformersPredictionHead(nn.Module):
+    """ Conditional prediction head for generating start and end logits.
+        hidden state is passed through a transformers encoder, output of 
+        which (hidden states) is then fed to the transformers decoder. Decoder
+        is then used to generate start logits hidden vector, this is then
+        used along with the encoder hidden vector to generate end logits
+        hidden vector. Both start and end logits vector are then fed through an
+        additional MLP to generate start and end logits.
+    """
+
+    def __init__(self, input_size, hidden_size=64, logit_size=1):
+        super(QAConditionalTransformersPredictionHead, self).__init__()
+        self.encoder = TransformersEncoder(num_heads=8, hidden_size=hidden_size)
+        self.decoder = TransformersDecoder(num_heads=8, hidden_size=hidden_size)
+        self.qa_start_logit = nn.Linear(hidden_size, logit_size)
+        self.qa_end_logit = nn.Linear(hidden_size, logit_size)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.1, inplace=False)
+        self.init_weights()
+
+    def init_weights(self):
+        nn.init.xavier_uniform_(self.qa_start_logit.weight)
+        nn.init.zeros_(self.qa_start_logit.bias)
+        nn.init.xavier_uniform_(self.qa_end_logit.weight)
+        nn.init.zeros_(self.qa_end_logit.bias)
+
+    def forward(self, x, mask=None):
+        x_encoder = self.encoder(x, mask=mask)
+        # use zero query vector for decoding start logits 
+        x_start_logit = self.decoder(x, x_encoder, mask=mask)
+        start_logit = self.qa_start_logit(x_start_logit)
+        # use decoder hidden state and input vector for decoding end logits
+        x_end_logit = self.decoder(x+x_start_logit, x_encoder, mask=mask)
+        end_logit = self.qa_end_logit(x_end_logit)
+        # concatenate start and end logits
+        logits = torch.cat([start_logit, end_logit], dim=-1)
+        return logits
         
 class QAGAN(nn.Module):
     """ QAGAN model """
@@ -249,6 +374,7 @@ class QAGAN(nn.Module):
         self.config = config
         self.backbone = config.backbone
         self.tokenizer = config.tokenizer
+        self.sequence_len = config.sequence_len
         self.hidden_size = self.backbone.config.hidden_size
         self.anneal = config.anneal
         self.max_steps = config.max_steps
@@ -261,6 +387,9 @@ class QAGAN(nn.Module):
             self.qa_outputs = QAConditionalPredictionHead(self.hidden_size)
         elif config.prediction_head == 'conditional_attention':
             self.qa_outputs = QAConditionalAttPredictionHead(self.hidden_size)
+        elif config.prediction_head == 'conditional_transformers':
+            self.qa_outputs = QAConditionalTransformersPredictionHead(
+                                input_size=self.sequence_len, hidden_size=self.hidden_size)
         else:
             raise ValueError('Invalid prediction head type')
 
@@ -277,7 +406,7 @@ class QAGAN(nn.Module):
         self.discriminator = DomainDiscriminator(num_classes=config.num_datasets,
                                                  input_size=input_size,
                                                  hidden_size=self.hidden_size,
-                                                 num_layers=config.num_layers,
+                                                 num_layers=config.num_discriminator_layers,
                                                  dropout=config.dropout)
         # other hyperparameters
         self.num_classes = config.num_datasets

@@ -8,7 +8,8 @@ def get_args():
                                                         'qagan',
                                                         'qagan-hidden',
                                                         'qagan-cond',
-                                                        'qagan-cond-att'])
+                                                        'qagan-cond-att',
+                                                        'qagan-cond-tfm'])
     parser.add_argument('--batch-size', type=int, default=16)
     parser.add_argument('--num-epochs', type=int, default=3)
     parser.add_argument('--lr', type=float, default=3e-5)
