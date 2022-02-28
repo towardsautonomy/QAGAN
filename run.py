@@ -19,7 +19,7 @@ def main():
 
     # load pre-trained base model
     model, tokenizer = None, None
-    if args.variant == 'baseline-v0':
+    if args.variant == 'baseline':
         tokenizer = DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased')
         model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
     else:
@@ -28,39 +28,52 @@ def main():
         config.output_attentions = False
         tokenizer = DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased')
         backbone = DistilBertModel.from_pretrained("distilbert-base-uncased", config=config)
-        if args.variant == 'baseline-v1':
-            qconfig = QAGANConfig(backbone=backbone, 
-                                  tokenizer=tokenizer)
-        elif args.variant == 'baseline-v3':
-            qconfig = QAGANConfig(backbone=backbone, 
-                                  tokenizer=tokenizer,
-                                  prediction_head='conditional_attention')
-        elif args.variant == 'baseline-v4':
+
+        if args.variant == 'baseline-cond':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer,
                                   prediction_head='conditional_linear')
-        elif args.variant == 'qagan-v0':
+        elif args.variant == 'baseline-cond-att':
+            qconfig = QAGANConfig(backbone=backbone, 
+                                  tokenizer=tokenizer,
+                                  prediction_head='conditional_attention')
+        elif args.variant == 'qagan':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
                                   use_discriminator=True,
                                   discriminate_cls=True)
-        elif args.variant == 'qagan-v1':
-            qconfig = QAGANConfig(backbone=backbone, 
-                                  tokenizer=tokenizer, 
-                                  use_discriminator=True,
-                                  discriminate_cls_sep=True)
-        elif args.variant == 'qagan-v2':
+        elif args.variant == 'qagan-hidden':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
                                   use_discriminator=True,
                                   discriminate_hidden_layers=True)
+        elif args.variant == 'qagan-cond':
+            qconfig = QAGANConfig(backbone=backbone, 
+                                  tokenizer=tokenizer, 
+                                  use_discriminator=True,
+                                  discriminate_cls=True,
+                                  prediction_head='conditional_linear')
+        elif args.variant == 'qagan-cond-att':
+            qconfig = QAGANConfig(backbone=backbone, 
+                                  tokenizer=tokenizer, 
+                                  use_discriminator=True,
+                                  discriminate_cls=True,
+                                  prediction_head='conditional_attention')
+        elif args.variant == 'qagan-cond-tfm':
+            qconfig = QAGANConfig(backbone=backbone, 
+                                  tokenizer=tokenizer, 
+                                  use_discriminator=True,
+                                  discriminate_cls=True,
+                                  prediction_head='conditional_transformers')
         else:
             raise ValueError
 
         # get the QAGAN model
-        if args.load_pretrained:
-            checkpoint_path = os.path.join(args.save_dir, 'checkpoint')
-            model = QAGAN(config=qconfig).from_pretrained(checkpoint_path)
+        if args.finetune or args.load_pretrained:
+            assert args.pretrained_model != 'none', 'Must specify a pretrained model to load'
+            qconfig['anneal'] = False
+            qconfig['fake_discriminator_warmup_steps'] = 0
+            model = QAGAN(config=qconfig).from_pretrained(args.pretrained_model)
         else:
             model = QAGAN(config=qconfig)
 
@@ -82,7 +95,7 @@ def main():
     elif args.do_eval:
         # load pretrained model
         checkpoint_path = os.path.join(args.save_dir, 'checkpoint')
-        if args.variant == 'baseline-v0':
+        if args.variant == 'baseline':
             model = DistilBertForQuestionAnswering.from_pretrained(checkpoint_path)
         else:
             model = QAGAN(config=qconfig).from_pretrained(checkpoint_path)

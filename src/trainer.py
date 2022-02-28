@@ -31,12 +31,15 @@ def prepare_eval_data(dataset_dict, tokenizer):
     # For evaluation, we will need to convert our predictions to substrings of the context, so we keep the
     # corresponding example_id and we will store the offset mappings.
     tokenized_examples["id"] = []
+    tokenized_examples["labels"] = []
     for i in tqdm(range(len(tokenized_examples["input_ids"]))):
         # Grab the sequence corresponding to that example (to know what is the context and what is the question).
         sequence_ids = tokenized_examples.sequence_ids(i)
         # One example can give several spans, this is the index of the example containing this span of text.
         sample_index = sample_mapping[i]
         tokenized_examples["id"].append(dataset_dict["id"][sample_index])
+        # label corresponding to the dataset class
+        tokenized_examples["labels"].append(dataset_dict['labels'][sample_index])
         # Set to None the offset_mapping that are not part of the context so it's easy to determine if a token
         # position is part of the context or not.
         tokenized_examples["offset_mapping"][i] = [
@@ -141,16 +144,26 @@ class Trainer():
         self.save_dir = args.save_dir
         self.logger = logger
         self.no_visualization = args.no_visualization
+        self.variant = args.variant
         if not os.path.exists(self.path):
             os.makedirs(self.path)
 
         if args.do_train:
             logger.info(f'Args: {json.dumps(vars(args), indent=4, sort_keys=True)}')
-            logger.info("Preparing Training Data...")
-            train_dataset, _ = get_dataset(args, args.train_datasets, args.train_dir, self.tokenizer, 'train')
-            logger.info("Preparing Validation Data...")
-            self.val_dataset, self.val_dict = \
-                get_dataset(args, args.train_datasets, args.val_dir, self.tokenizer, 'val')
+            if args.finetune:
+                logger.info("Preparing Fine-Tuning Training Data...")
+                train_dataset, _ = get_dataset(args, args.finetune_datasets, args.finetune_train_dir, self.tokenizer, 'train')
+            else:
+                logger.info("Preparing Training Data...")
+                train_dataset, _ = get_dataset(args, args.train_datasets, args.train_dir, self.tokenizer, 'train')
+            if args.finetune:
+                logger.info("Preparing Fine-Tuning Validation Data...")
+                self.val_dataset, self.val_dict = \
+                    get_dataset(args, args.finetune_datasets, args.finetune_val_dir, self.tokenizer, 'val')
+            else:
+                logger.info("Preparing Validation Data...")
+                self.val_dataset, self.val_dict = \
+                    get_dataset(args, args.train_datasets, args.val_dir, self.tokenizer, 'val')
             self.train_dataloader = DataLoader(train_dataset,
                                     batch_size=args.batch_size,
                                     sampler=RandomSampler(train_dataset))
@@ -252,15 +265,39 @@ class Trainer():
                     loss = outputs[0]
                     loss.backward()
                     optim.step()
+
+                    # update progress bar
                     progress_bar.update(len(input_ids))
-                    progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
                     if hasattr(outputs, 'loss_dict'):
-                        progress_bar.set_postfix(epoch=epoch_num, **outputs.loss_dict)
-                        for k, v in outputs.loss_dict.items():
-                            tbx.add_scalar(f'train/{k}', v, global_idx)
+                        loss_dict = outputs.loss_dict.copy()
+                        if 'use_discriminator' not in self.model.config.__dict__.keys():
+                            progress_bar.set_postfix(epoch=epoch_num, **loss_dict)
+                            for k, v in outputs.loss_dict.items():
+                                tbx.add_scalar(f'train/{k}', v, global_idx)
                     else:
                         progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
                         tbx.add_scalar(f'train/NLL', loss.item(), global_idx)
+                        
+                    # check if a forward pass through discriminator is required
+                    if 'use_discriminator' in self.model.config.__dict__.keys():
+                        if self.model.config.__dict__['use_discriminator']:
+                            optim.zero_grad()
+                            model_input_dict['discriminator'] = True
+                            outputs = self.model(**model_input_dict)
+                            loss = outputs[0]
+                            loss.backward()
+                            optim.step()
+
+                            # update progress bar
+                            if hasattr(outputs, 'loss_dict'):
+                                # update loss_dict
+                                for k, v in outputs.loss_dict.items():
+                                    loss_dict[k] = v 
+                                progress_bar.set_postfix(epoch=epoch_num, **loss_dict)
+                                for k, v in loss_dict.items():
+                                    tbx.add_scalar(f'train/{k}', v, global_idx)
+
+                    # evaluate
                     if (global_idx % self.eval_every) == 0:
                         self.logger.info(f'Evaluating at step {global_idx}...')
                         preds, curr_score = self.evaluate(self.val_dataloader, self.val_dict, return_preds=True)

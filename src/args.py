@@ -2,13 +2,14 @@ import argparse
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--variant', type=str, choices=['baseline-v0', 
-                                                        'baseline-v1', 
-                                                        'baseline-v3',
-                                                        'baseline-v4', 
-                                                        'qagan-v0',
-                                                        'qagan-v1',
-                                                        'qagan-v2'])
+    parser.add_argument('--variant', type=str, choices=['baseline', 
+                                                        'baseline-cond', 
+                                                        'baseline-cond-att',
+                                                        'qagan',
+                                                        'qagan-hidden',
+                                                        'qagan-cond',
+                                                        'qagan-cond-att',
+                                                        'qagan-cond-tfm'])
     parser.add_argument('--batch-size', type=int, default=16)
     parser.add_argument('--num-epochs', type=int, default=3)
     parser.add_argument('--lr', type=float, default=3e-5)
@@ -17,12 +18,17 @@ def get_args():
     parser.add_argument('--save-dir', type=str, default='save/')
     parser.add_argument('--train', action='store_true')
     parser.add_argument('--eval', action='store_true')
+    parser.add_argument('--finetune', action='store_true')
     parser.add_argument('--load-pretrained', action='store_true', default=False)
+    parser.add_argument('--pretrained-model', type=str, default='none')
     parser.add_argument('--train-datasets', type=str, default='squad,nat_questions,newsqa')
+    parser.add_argument('--finetune-datasets', type=str, default='duorc,race,relation_extraction')
     parser.add_argument('--run-name', type=str, default='multitask_distilbert')
     parser.add_argument('--recompute-features', action='store_true')
     parser.add_argument('--train-dir', type=str, default='datasets/indomain_train')
+    parser.add_argument('--finetune-train-dir', type=str, default='datasets/oodomain_train')
     parser.add_argument('--val-dir', type=str, default='datasets/indomain_val')
+    parser.add_argument('--finetune-val-dir', type=str, default='datasets/oodomain_val')
     parser.add_argument('--eval-dir', type=str, default='datasets/oodomain_test')
     parser.add_argument('--eval-datasets', type=str, default='race,relation_extraction,duorc')
     parser.add_argument('--do-train', action='store_true')
