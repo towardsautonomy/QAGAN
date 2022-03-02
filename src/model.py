@@ -56,7 +56,8 @@ class QAGANPredictions:
                         1:'start_logits', 
                         2:'end_logits', 
                         3:'loss_dict', 
-                        4:'hidden_states'}
+                        4:'hidden_states',
+                        5:'discriminator_predicted_class'}
 
     # method for item assignment
     def __setitem__(self, key, value):
@@ -434,6 +435,7 @@ class QAGAN(nn.Module):
             qa_loss = torch.tensor(0.0, dtype=torch.float, device=input_ids.device)
 
             # sometimes the start/end positions are outside our model inputs, we ignore these terms
+
             ignored_index = start_logits.size(1)
             if (start_positions is not None) and (end_positions is not None):
                 start_positions.clamp_(0, ignored_index)

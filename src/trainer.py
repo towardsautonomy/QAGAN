@@ -8,7 +8,7 @@ import csv
 from src import util
 from transformers import AdamW
 from tensorboardX import SummaryWriter
-
+from textattack.augmentation import EmbeddingAugmenter
 
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
@@ -104,10 +104,12 @@ def prepare_train_data(dataset_dict, tokenizer):
             # Note: we could go after the last offset if the answer is the last word (edge case).
             while token_start_index < len(offsets) and offsets[token_start_index][0] <= start_char:
                 token_start_index += 1
-            tokenized_examples["start_positions"].append(token_start_index - 1)
             while offsets[token_end_index][1] >= end_char:
                 token_end_index -= 1
+
             tokenized_examples["end_positions"].append(token_end_index + 1)
+            tokenized_examples["start_positions"].append(token_start_index - 1)
+
             # assertion to check if this checks out
             context = dataset_dict['context'][sample_index]
             offset_st = offsets[tokenized_examples['start_positions'][-1]][0]
@@ -198,10 +200,12 @@ class Trainer():
                 # Setup for forward
                 input_ids = batch['input_ids'].to(device)
                 attention_mask = batch['attention_mask'].to(device)
+                labels = batch['labels'].to(device)
                 batch_size = len(input_ids)
                 # model inputs
                 model_input_dict = {'input_ids': input_ids,
-                                    'attention_mask': attention_mask}
+                                    'attention_mask': attention_mask,
+                                    'labels': labels}
 
                 outputs = self.model(**model_input_dict)
                 # Forward

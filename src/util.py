@@ -188,6 +188,45 @@ class QADataset(Dataset):
     def __len__(self):
         return len(self.encodings['input_ids'])
 
+def write_squad(path, data_dict):
+    """
+    Write data dict into squad data.
+    Args:
+        path: path to write data to
+        data_dict: data dict of the same format that is returned by read_squad function
+
+    Returns:
+
+    """
+    def construct_data_entry(data_dict, record_idx):
+        data_entry = {"paragraphs": [
+            {
+                "context": data_dict["context"][record_idx],
+                "qas": [
+                    {
+                        "question": data_dict["question"][record_idx],
+                        "id": data_dict["id"][record_idx],
+                        "answers": [
+                            data_dict["answer"]
+                        ]
+
+                    }
+                ]
+            }
+
+        ]}
+        return data_entry
+
+    path = Path(path)
+    squad_dict = {"data": []}
+
+    total_record = len(data_dict['id'])
+    for record_idx in range(total_record):
+        squad_dict['data'].append(construct_data_entry(data_dict, record_idx))
+
+    with open(path, 'w+') as f:
+        json.dump(squad_dict, f)
+
 def read_squad(path):
     path = Path(path)
     with open(path, 'rb') as f:
