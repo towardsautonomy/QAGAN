@@ -198,6 +198,16 @@ def write_squad(path, data_dict):
     Returns:
 
     """
+
+    def construct_answer_entry(answer_dict):
+        return [
+            {
+                "answer_start": answer_dict["answer_start"][i],
+                "text": answer_dict["text"][i]
+            }
+            for i in range(len(answer_dict["answer_start"]))
+        ]
+
     def construct_data_entry(data_dict, record_idx):
         data_entry = {"paragraphs": [
             {
@@ -206,9 +216,7 @@ def write_squad(path, data_dict):
                     {
                         "question": data_dict["question"][record_idx],
                         "id": data_dict["id"][record_idx],
-                        "answers": [
-                            data_dict["answer"]
-                        ]
+                        "answers": construct_answer_entry(data_dict["answer"][record_idx])
 
                     }
                 ]
@@ -224,7 +232,7 @@ def write_squad(path, data_dict):
     for record_idx in range(total_record):
         squad_dict['data'].append(construct_data_entry(data_dict, record_idx))
 
-    with open(path, 'w+') as f:
+    with open(path, 'w') as f:
         json.dump(squad_dict, f)
 
 def read_squad(path):
