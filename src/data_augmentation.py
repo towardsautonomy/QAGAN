@@ -21,35 +21,40 @@ def get_new_data(context, question, answer):
 
 def augment_data(data_dict, i):
     context, question, answer, old_id = data_dict['context'][i], data_dict['question'][i], data_dict['answer'][i], data_dict['id'][i]
-    back_translate_augmenter = BackTranslationAugmenter(transformations_per_example=1)
-    embedding_augmenter = EmbeddingAugmenter(transformations_per_example=5)
     print ("Augmenting: {}".format(context))
     # try paraphrasing the context first. we would only output the data if after paraprasing the answer text still exists in the paraprased context
 
     # try paraphrasing the question. We don't do extra check here and assume that question make sense.
-    for transformed_question in BackTranslationAugmenter(transformations_per_example=3).augment(question):
+    for transformed_question in BackTranslationAugmenter(transformations_per_example=1).augment(question):
         try:
+            print ("Transofrming question: ", transformed_question)
             yield get_new_data(context, transformed_question, answer)
-        except ValueError as e:
+        except Exception as e:
             print (e)
 
     # transform the context by swaping out words with similar word close in embedding
-    for transformed_context in EmbeddingAugmenter(transformations_per_example=5).augment(context):
+    for transformed_context in EmbeddingAugmenter(transformations_per_example=1).augment(context):
         try:
+            print ("Transformed_text: ", transformed_context)
             yield get_new_data(transformed_context, question, answer)
-        except ValueError as e:
+        except Exception as e:
             print (e)
 
     # change the answer word to a different word
-    # for transformed_answer in EmbeddingAugmenter(transformations_per_example=5).augment(answer["text"][0]):
-        # transformed_context = re.sub(answer["text"][0], transformed_answer, context)
-        yield get_new_data(transformed_context, question, answer)
-
-    for transformed_context in BackTranslationAugmenter(transformations_per_example=1).augment(context):
+    for transformed_answer in EmbeddingAugmenter(transformations_per_example=2).augment(answer["text"][0]):
         try:
+            print ("Transformed_text: ", transformed_answer)
+            transformed_context = re.sub(answer["text"][0], transformed_answer, context)
             yield get_new_data(transformed_context, question, answer)
-        except ValueError as e:
+        except Exception as e:
             print (e)
+
+
+    # for transformed_context in BackTranslationAugmenter(transformations_per_example=1).augment(context):
+    #     try:
+    #         yield get_new_data(transformed_context, question, answer)
+    #     except ValueError as e:
+    #         print (e)
 
 def data_set_to_augment(data_set_path):
     data_dict = util.read_squad(data_set_path)
@@ -69,8 +74,11 @@ def data_set_to_augment(data_set_path):
 
 if __name__ == "__main__":
     data_set_to_augment("/home/kaiyuewang/QAGAN/datasets/oodomain_train/duorc")
-    original_dict = util.read_squad("/home/kaiyuewang/QAGAN/datasets/oodomain_train/duorc")
-    new_dict = util.read_squad("/home/kaiyuewang/QAGAN/datasets/oodomain_train/duorc_augmented")
-    import json
-    print (json.dumps(original_dict, sort_keys=True) == json.dumps(new_dict, sort_keys=True))
+    data_set_to_augment("/home/kaiyuewang/QAGAN/datasets/oodomain_train/race")
+    data_set_to_augment("/home/kaiyuewang/QAGAN/datasets/oodomain_train/relation_extraction")
+
+    # original_dict = util.read_squad("/home/kaiyuewang/QAGAN/datasets/oodomain_train/duorc")
+    # new_dict = util.read_squad("/home/kaiyuewang/QAGAN/datasets/oodomain_train/duorc_augmented")
+    # import json
+    # print (json.dumps(original_dict, sort_keys=True) == json.dumps(new_dict, sort_keys=True))
 

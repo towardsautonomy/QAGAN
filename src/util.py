@@ -180,7 +180,7 @@ class QADataset(Dataset):
         self.keys = ['input_ids', 'attention_mask', 'labels']
         if train:
             self.keys += ['start_positions', 'end_positions']
-        assert(all(key in self.encodings for key in self.keys))
+        assert(all(key in self.encodings for key in self.keys), "Expect {} but found: {}".format(self.keys, self.encodings.keys()))
 
     def __getitem__(self, idx):
         return {key : torch.tensor(self.encodings[key][idx]) for key in self.keys}
@@ -234,6 +234,17 @@ def write_squad(path, data_dict):
 
     with open(path, 'w') as f:
         json.dump(squad_dict, f)
+
+def downsample_dataset_dir(data_dict, sample_fraction):
+    new_data_dict = {'question': [], 'context': [], 'id': [], 'answer': []}
+    for i in range(len(data_dict['id'])):
+        if random.random() < sample_fraction:
+            new_data_dict['question'].append(data_dict['question'][i])
+            new_data_dict['context'].append(data_dict['context'][i])
+            new_data_dict['id'].append(data_dict['id'][i])
+            new_data_dict['answer'].append(data_dict['answer'][i])
+    return new_data_dict
+
 
 def read_squad(path):
     path = Path(path)
