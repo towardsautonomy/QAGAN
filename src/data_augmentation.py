@@ -5,7 +5,7 @@ import re
 import torch
 from tqdm import tqdm
 from itertools import starmap
-
+import argparse
 from itertools import islice
 from textattack.augmentation import EmbeddingAugmenter, BackTranslationAugmenter
 from transformers import MarianTokenizer, MarianMTModel
@@ -56,7 +56,7 @@ def get_context_to_back_translate(context, answer):
     for i in range(len(answer["text"])):
         start_index = min(start_index, answer["answer_start"][i])
         end_index = max(end_index, answer["answer_start"][i] + len(answer["text"][i]))
-    padding = 150 # padd 100 words before and after start and end index
+    padding = 150 # padd 150 words before and after start and end index
     excerpt_start = max(0, start_index - padding)
     excerpt_end = min(end_index + padding, len(context))
     return context[excerpt_start: excerpt_end]
@@ -67,12 +67,12 @@ def get_new_data(context, question, answer):
     new_answer = { "text": [], "answer_start": []}
 
     for answer_text in answer["text"]:
-        r = re.search(r'\b%s\b' % answer_text, context)
+        r = re.search(r'\b%s\b' % answer_text.tolower(), context.tolower())
         if not r:
             print (context)
             raise ValueError("answer text: {} can't be found in context".format(answer_text))
         new_answer["answer_start"].append(r.start())
-        new_answer["text"].append(answer_text)
+        new_answer["text"].append(answer_text.tolower())
 
     # generate a random uuid. it's not safe as there might be collision but probably ok.
     return (context, question, new_answer, str(uuid.uuid4()))
@@ -130,6 +130,15 @@ def data_set_to_augment(data_set_path):
     util.write_squad(out_data_path, augmented_data_dict)
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Process some integers.')
+    parser.add_argument('--domain', type=str,
+                        help='string name for domain directory (indomain_train|indomain_val|oodomain_train|etc')
+    parser.add_argument('--dataset', type=str,
+                        help='one of duorc nat_questions newsqa ...')
+
+    args = parser.parse_args()
+
+    print (os.path.join(os.path.dirname(__file__), "..", "datasets", args.domain, args.dataset))
     # text_1 = """
     # n\nNew Orleans, Louisiana, 1927. An enraged posse of men descend on the isolated Seven Doors Hotel deep in the swamps. They grab an artist called Schweik (Antoine Saint John), who is cloistered there. Accusing him of being a warlock, Schweik is dragged down to the cellar where he is savagely beaten with heavy chains, tortured with quicklime acid, and crucified with his wrists nailed to a cellar wall, despite his dire warnings of evil to be unleashed.New Orleans, 1981. Liza Merril (Catriona MacColl) is a young woman who arrives from New York City to claim the hotel as her inheritance. No sooner has architect friend Marin Avery (Michele Mirabella) begins to show her around the property, strange incidents begin to happen. A painter (Anthony Flees) falls off his rig and is horribly injured, coughing up blood and babbling about, \"the eyes, the eyes.\" Dr. John McCabe (David Warbeck) arrives to take the injured man to the hospital, and offers Liza some sympathy. Next, a plumber, named Joe, attempts to repair a major leak in the flooded cellar. However, he is murdered by a presence that emerged from behind a slim-caked wall. The atmosphere at the hotel is further chilled by the creepy-looking servants, Arthur (Giampaolo Saccarola) and Martha (Veronica Lazar), who apparently come with the hotel. Martha discovers Joe's dead body in the cellar, and another much older cadaver lying in a pool of dirty water nearby. It is apparently that of Schweik, the artist.Driving down the 14-mile causeway to New Orleans, Liza encounters a strange blind woman, standing in the middle of the desolate highway. The blind woman introduces herself as Emily (Sarah Keller), and tells Liza that she has been waiting for her, although her eyes are occluded with cataracts. Liza drives Emily over to her opulently furnished house in New Orleans. Liza is warned by Emily to leave the hotel while she still can. Meanwhile at the hospital morgue, Dr. John McCabe is performing the autopsy on Joe the plumber while his assistant Harris (Al Cliver) wants to install an EMG machine to the corpse of Schweik. John laughs it off and leaves for lunch, while Harris remains behind to install the EMG machine. After Harris leaves for a call, the EMG machine begins pulsing with activity. A little later, Joe's wife Mary-Anne (Laura De Marchi) arrives with her daughter Jill (Maria Pia Marsale) to dress up her husband's corpse for the funeral, when she is killed in a horrific way by scalded with acid. Jill is then menaced by the re-animated cadaver of Schweik.Liza meets with John McCabe in a downtown bar to discuss her misgivings and anxieties.
     # """
@@ -139,7 +148,7 @@ if __name__ == "__main__":
     # """
     #
     # print(custom_back_translate([text_1, text_2]))
-    data_set_to_augment("/home/kaiyuewang/QAGAN/datasets/oodomain_train/duorc")
+    data_set_to_augment(os.path.join(os.path.dirname(__file__), "..", "datasets", args.domain, args.dataset))
     # data_set_to_augment("/home/kaiyuewang/QAGAN/datasets/oodomain_train/race")
     # data_set_to_augment("/home/kaiyuewang/QAGAN/datasets/oodomain_train/relation_extraction")
 
