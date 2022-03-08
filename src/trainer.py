@@ -50,6 +50,11 @@ def prepare_eval_data(dataset_dict, tokenizer):
     return tokenized_examples
 
 def prepare_train_data(dataset_dict, tokenizer):
+    # remove questions that are too long
+    question_idx_too_long = sorted([i for i in range(len(dataset_dict['question'])) if len(dataset_dict['question'][i]) > 384], reverse=True)
+    for idx_to_remove in question_idx_too_long:
+        for key in dataset_dict:
+            dataset_dict[key].pop(idx_to_remove)
     tokenized_examples = tokenizer(dataset_dict['question'],
                                    dataset_dict['context'],
                                    truncation="only_second",
@@ -114,7 +119,9 @@ def prepare_train_data(dataset_dict, tokenizer):
             context = dataset_dict['context'][sample_index]
             offset_st = offsets[tokenized_examples['start_positions'][-1]][0]
             offset_en = offsets[tokenized_examples['end_positions'][-1]][1]
-            if context[offset_st : offset_en] != answer['text'][0]:
+            if context[offset_st : offset_en] != answer['text'][0] and \
+                    context[offset_st : offset_en].lower() != answer['text'][0].lower():
+                print (context[offset_st : offset_en], answer['text'][0])
                 inaccurate += 1
 
     total = len(tokenized_examples['id'])
@@ -157,7 +164,7 @@ class Trainer():
                 train_dataset, _ = get_dataset(args, args.finetune_datasets, args.finetune_train_dir, self.tokenizer, 'train')
             else:
                 logger.info("Preparing Training Data...")
-                train_dataset, _ = get_dataset(args, args.train_datasets, args.train_dir, self.tokenizer, 'train')
+                train_dataset, _ = get_dataset(args, args.train_datasets, args.train_dir, self.tokenizer, 'train', args.decimate_dataset)
             if args.finetune:
                 logger.info("Preparing Fine-Tuning Validation Data...")
                 self.val_dataset, self.val_dict = \
@@ -323,13 +330,27 @@ class Trainer():
                     global_idx += 1
         return best_scores
 
-def get_dataset(args, datasets, data_dir, tokenizer, split_name):
+def get_dataset(args, datasets, data_dir, tokenizer, split_name, should_decmiate=False):
     datasets = datasets.split(',')
     dataset_dict = None
     dataset_name=''
+
+    dataset_sample_fraction = {
+        "duorc": 1,
+        "nat_questions": .9,
+        "newsqa": .9,
+        "race": 1,
+        "relation_extraction": 1,
+        "squad": .9
+    }
     for i, dataset in enumerate(datasets):
         dataset_name += f'_{dataset}'
         dataset_dict_curr = util.read_squad(f'{data_dir}/{dataset}')
+        print (f"pre process: dataset: {dataset} has size: {len(dataset_dict_curr['id'])}")
+        if should_decmiate:
+            dataset_dict_curr = util.downsample_dataset_dir(dataset_dict_curr, dataset_sample_fraction[dataset])
+        print (f"post process: dataset: {dataset} has size: {len(dataset_dict_curr['id'])}")
+
         dataset_dict = util.merge(dataset_dict, dataset_dict_curr, i)
     data_encodings = read_and_process(args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
     return util.QADataset(data_encodings, train=(split_name=='train')), dataset_dict
