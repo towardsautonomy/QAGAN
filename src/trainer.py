@@ -137,7 +137,7 @@ def read_and_process(args, tokenizer, dataset_dict, dir_name, dataset_name, spli
             tokenized_examples = prepare_train_data(dataset_dict, tokenizer)
         else:
             tokenized_examples = prepare_eval_data(dataset_dict, tokenizer)
-        util.save_pickle(tokenized_examples, cache_path)
+        # util.save_pickle(tokenized_examples, cache_path)
     return tokenized_examples
 
 class Trainer():
@@ -336,21 +336,34 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name, should_decmiate
     dataset_name=''
 
     dataset_sample_fraction = {
-        "duorc": 1,
-        "nat_questions": .9,
-        "newsqa": .9,
-        "race": 1,
-        "relation_extraction": 1,
-        "squad": .9
+        "duorc_augmented": 1,
+        "nat_questions_augmented": .3,
+        "newsqa_augmented": .3,
+        "race_augmented": 1,
+        "relation_extraction_augmented": 1,
+        "squad_augmented": .3
     }
     for i, dataset in enumerate(datasets):
         dataset_name += f'_{dataset}'
         dataset_dict_curr = util.read_squad(f'{data_dir}/{dataset}')
+        original_dataset_ids = set()
+        if "augmented" in dataset:
+            try:
+                original_dataset_name = dataset.replace("_augmented", "")
+                dataset_dict_orginal = util.read_squad(f'{data_dir}/{original_dataset_name}')
+                original_dataset_ids = set(dataset_dict_orginal["id"])
+            except Exception as e:
+                print (e)
+                pass
+
+
         print (f"pre process: dataset: {dataset} has size: {len(dataset_dict_curr['id'])}")
         if should_decmiate:
-            dataset_dict_curr = util.downsample_dataset_dir(dataset_dict_curr, dataset_sample_fraction[dataset])
+            dataset_dict_curr = util.downsample_dataset_dir(dataset_dict_curr, dataset_sample_fraction[dataset], original_dataset_ids)
         print (f"post process: dataset: {dataset} has size: {len(dataset_dict_curr['id'])}")
 
         dataset_dict = util.merge(dataset_dict, dataset_dict_curr, i)
+    print ("finished loading dataset_dict")
     data_encodings = read_and_process(args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
+    print ("finished_read_and_process")
     return util.QADataset(data_encodings, train=(split_name=='train')), dataset_dict

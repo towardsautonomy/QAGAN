@@ -117,7 +117,7 @@ def read_file(input_path, verbose):
                         answer_text_from_detected_answer_spans = passage[
                             start_char_span : end_char_span + 1
                         ]
-                        # Check if squad normalized found answer text is in the normalized
+                        # Check if squad_augmented normalized found answer text is in the normalized
                         # allowed answers. MRQA also does some weird stuff with hyphens
                         # and apostrophes
                         # (e.g., turning them into a space instead of removing them),

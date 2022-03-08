@@ -190,7 +190,7 @@ class QADataset(Dataset):
 
 def write_squad(path, data_dict):
     """
-    Write data dict into squad data.
+    Write data dict into squad_augmented data.
     Args:
         path: path to write data to
         data_dict: data dict of the same format that is returned by read_squad function
@@ -235,10 +235,10 @@ def write_squad(path, data_dict):
     with open(path, 'w') as f:
         json.dump(squad_dict, f)
 
-def downsample_dataset_dir(data_dict, sample_fraction):
+def downsample_dataset_dir(data_dict, sample_fraction, orignal_ids=set()):
     new_data_dict = {'question': [], 'context': [], 'id': [], 'answer': []}
     for i in range(len(data_dict['id'])):
-        if random.random() < sample_fraction:
+        if random.random() < sample_fraction or data_dict['id'][i] in orignal_ids:
             new_data_dict['question'].append(data_dict['question'][i])
             new_data_dict['context'].append(data_dict['context'][i])
             new_data_dict['id'].append(data_dict['id'][i])
@@ -307,7 +307,7 @@ def add_end_idx(answers, contexts):
         start_idx = answer['answer_start']
         end_idx = start_idx + len(gold_text)
 
-        # sometimes squad answers are off by a character or two – fix this
+        # sometimes squad_augmented answers are off by a character or two – fix this
         if context[start_idx:end_idx] == gold_text:
             answer['answer_end'] = end_idx
         elif context[start_idx-1:end_idx-1] == gold_text:
