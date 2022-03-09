@@ -55,7 +55,7 @@ def custom_back_translate(texts, target_language='de'):
         translated = back_translate(texts[start: start+batch_size], source_lang="en", target_lang=target_language)
         result.extend(translated)
         perplexity.extend(list(starmap(get_perplexity_data, zip(texts[start: start+batch_size], translated))))
-        break
+
         # perplexity_true, perplexity_translated = calculate_perplexity(texts[start: start+batch_size], translated)
         # perpleixty_true_text.extend(perplexity_true)
         # perpleixty_translated_text.extend(perplexity_translated)
@@ -104,8 +104,8 @@ def get_new_data(context, question, answer):
 
 def filter_valid_augmentated_data(original_dataset, augmented_context_list, augmented_question_list, context_perplexity, question_perplexity):
     total_record_sz = len(original_dataset["id"])
-    # assert (len(augmented_context_list) == len(original_dataset["context"]))
-    # assert (len(augmented_question_list) == len(original_dataset["question"]))
+    assert (len(augmented_context_list) == len(original_dataset["context"]))
+    assert (len(augmented_question_list) == len(original_dataset["question"]))
     for i in range(total_record_sz):
         context, question, answer, old_id = original_dataset['context'][i], original_dataset['question'][i], original_dataset['answer'][i], \
                                             original_dataset['id'][i]
