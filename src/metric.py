@@ -10,6 +10,11 @@ class data:
 def get_perplexity(texts: List[str], ppl_model, ppl_tokenizer):
     max_length = ppl_model.config.n_positions
     stride = 512
+    # cut text into segment with stride
+    # def text_to_smaller_text(text):
+    #     return [text[i: min(i + stride, len(text))] for i in range(0, len(text), stride)]
+    # texts = map(text_to_smaller_text, texts)
+    #
     tokens = [ppl_tokenizer.convert_tokens_to_ids(
         ppl_tokenizer.tokenize(x, add_prefix_space=True))
         for x in texts]
@@ -19,10 +24,9 @@ def get_perplexity(texts: List[str], ppl_model, ppl_tokenizer):
     mask = (inputs != 0).float()
     # replace the ids of the padded tokens (where token_id==padded_id) with `-1`
     labels = inputs.masked_fill(inputs == 0, 0)
-    outputs = ppl_model(inputs, attention_mask=mask, labels=labels)
+    with torch.no_grad():
+        outputs = ppl_model(inputs, attention_mask=mask, labels=labels)
     loss, logits = outputs[:2]
-    print (logits.size())
-    print(inputs.size())
     logits_= torch.transpose(logits, 1, 2) # (Num sample, Dimension, Num words)
     _labels = torch.cat([inputs[:, 1:], inputs[:, :1] * 0], dim=1)
     loss_real = cross_entropy(logits_, _labels, ignore_index=0,
@@ -32,15 +36,18 @@ def get_perplexity(texts: List[str], ppl_model, ppl_tokenizer):
 
 def calculate_perplexity(original_text: List[str],  translated_text: List[str]):
     from transformers import GPT2LMHeadModel, GPT2Tokenizer
-    ppl_model = GPT2LMHeadModel.from_pretrained("gpt2")
-    ppl_model.to("cuda")
-    ppl_tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-    ppl_model.eval()
-    original_ppl = get_perplexity(original_text, ppl_model, ppl_tokenizer)
-    print(original_ppl.tolist())
-    translated_ppl = get_perplexity(translated_text, ppl_model, ppl_tokenizer)
-    print (translated_ppl.tolist())
-    return original_ppl.tolist(), translated_ppl.tolist()
+    try:
+        ppl_model = GPT2LMHeadModel.from_pretrained("gpt2")
+        ppl_model.to("cuda")
+        ppl_tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+        ppl_model.eval()
+        original_ppl = get_perplexity(original_text, ppl_model, ppl_tokenizer)
+        # print("Original: ", torch.exp(original_ppl).tolist())
+        translated_ppl = get_perplexity(translated_text, ppl_model, ppl_tokenizer)
+        # print ("Translated: ", torch.exp(translated_ppl).tolist())
+        return torch.exp(original_ppl).tolist(), torch.exp(translated_ppl).tolist()
+    except Exception as e:
+        return [None] * len(original_text), [None] * len(translated_text)
 
 def get_perplexity_data(original_text, tranlated_text):
 #     return calculate_perplexity(original_text, tranlated_text)

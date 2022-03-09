@@ -11,7 +11,7 @@ from textattack.augmentation import EmbeddingAugmenter, BackTranslationAugmenter
 from transformers import MarianTokenizer, MarianMTModel
 from metric import calculate_perplexity, get_perplexity_data
 
-def custom_back_translate(texts, target_language='de'):
+def custom_back_translate(texts, target_language='de', use_fast_metric=False):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print (f"Back Trnaslation Using: {device}")
     target_model_name = 'Helsinki-NLP/opus-mt-en-de'
@@ -49,16 +49,16 @@ def custom_back_translate(texts, target_language='de'):
     batch_size  = 8
     result = []
     perplexity = []
-    # perpleixty_true_text = []
-    # perpleixty_translated_text = []
+    perpleixty_true_text = []
+    perpleixty_translated_text = []
     for start in tqdm(range(0, len(texts), batch_size)):
         translated = back_translate(texts[start: start+batch_size], source_lang="en", target_lang=target_language)
         result.extend(translated)
-        perplexity.extend(list(starmap(get_perplexity_data, zip(texts[start: start+batch_size], translated))))
-
-        # perplexity_true, perplexity_translated = calculate_perplexity(texts[start: start+batch_size], translated)
-        # perpleixty_true_text.extend(perplexity_true)
-        # perpleixty_translated_text.extend(perplexity_translated)
+        if not use_fast_metric:
+            perplexity.extend(list(starmap(get_perplexity_data, zip(texts[start: start+batch_size], translated))))
+        else:
+            perplexity_true, perplexity_translated = calculate_perplexity(texts[start: start + batch_size], translated)
+            perplexity.extend([{"original_text": orig, "translated_text": translated} for orig, translated in zip(perplexity_true, perplexity_translated)])
     return result, perplexity
 
 # given some context can be too large. we only back translate the portion around the answer index
@@ -149,14 +149,14 @@ def filter_valid_augmentated_data(original_dataset, augmented_context_list, augm
 
 
 
-def data_set_to_augment(data_set_path):
+def data_set_to_augment(data_set_path, use_fast_metric=False):
     data_dict = util.read_squad(data_set_path)
     out_data_path = os.path.join(os.path.dirname(data_set_path), os.path.basename(data_set_path) + "_augmented")
 
     augmented_data_dict ={'question': [], 'context': [], 'id': [], 'answer': [], 'context_perplexity': [], 'question_perplexity': []}
     augmented_context_de, context_perplexity = custom_back_translate(list(starmap(get_context_to_back_translate, zip(data_dict["context"], data_dict["answer"]))),
-                                                 target_language='de')
-    augmented_question_de, question_perplexity = custom_back_translate(data_dict["question"], target_language='de')
+                                                 target_language='de', use_fast_metric=use_fast_metric)
+    augmented_question_de, question_perplexity = custom_back_translate(data_dict["question"], target_language='de', use_fast_metric=use_fast_metric)
 
     for augmented_context, augmented_question, augmented_answer, augmented_id, context_perplexity, question_perplexity in filter_valid_augmentated_data(data_dict, augmented_context_de, augmented_question_de, context_perplexity, question_perplexity):
         augmented_data_dict['question'].append(augmented_question)
@@ -174,11 +174,13 @@ if __name__ == "__main__":
                         help='string name for domain directory (indomain_train|indomain_val|oodomain_train|etc')
     parser.add_argument('--datasets', type=str, default="duorc",
                         help='list of questions nat_questions_augmented newsqa_augmented connected by comma')
+    parser.add_argument('--fast_metric', type=bool, default="false",
+                        help='whether to use fast perplexity computation')
 
     args = parser.parse_args()
     for dataset in args.datasets.split(','):
         print (os.path.join(os.path.dirname(__file__), "..", "datasets", args.domain, dataset))
-        data_set_to_augment(os.path.join(os.path.dirname(__file__), "..", "datasets", args.domain, dataset))
+        data_set_to_augment(os.path.join(os.path.dirname(__file__), "..", "datasets", args.domain, dataset), args.fast_metric)
 
     # text_1 = """
     # n\nNew Orleans, Louisiana, 1927. An enraged posse of men descend on the isolated Seven Doors Hotel deep in the swamps. They grab an artist called Schweik (Antoine Saint John), who is cloistered there. Accusing him of being a warlock, Schweik is dragged down to the cellar where he is savagely beaten with heavy chains, tortured with quicklime acid, and crucified with his wrists nailed to a cellar wall, despite his dire warnings of evil to be unleashed.New Orleans, 1981. Liza Merril (Catriona MacColl) is a young woman who arrives from New York City to claim the hotel as her inheritance. No sooner has architect friend Marin Avery (Michele Mirabella) begins to show her around the property, strange incidents begin to happen. A painter (Anthony Flees) falls off his rig and is horribly injured, coughing up blood and babbling about, \"the eyes, the eyes.\" Dr. John McCabe (David Warbeck) arrives to take the injured man to the hospital, and offers Liza some sympathy. Next, a plumber, named Joe, attempts to repair a major leak in the flooded cellar. However, he is murdered by a presence that emerged from behind a slim-caked wall. The atmosphere at the hotel is further chilled by the creepy-looking servants, Arthur (Giampaolo Saccarola) and Martha (Veronica Lazar), who apparently come with the hotel. Martha discovers Joe's dead body in the cellar, and another much older cadaver lying in a pool of dirty water nearby. It is apparently that of Schweik, the artist.Driving down the 14-mile causeway to New Orleans, Liza encounters a strange blind woman, standing in the middle of the desolate highway. The blind woman introduces herself as Emily (Sarah Keller), and tells Liza that she has been waiting for her, although her eyes are occluded with cataracts. Liza drives Emily over to her opulently furnished house in New Orleans. Liza is warned by Emily to leave the hotel while she still can. Meanwhile at the hospital morgue, Dr. John McCabe is performing the autopsy on Joe the plumber while his assistant Harris (Al Cliver) wants to install an EMG machine to the corpse of Schweik. John laughs it off and leaves for lunch, while Harris remains behind to install the EMG machine. After Harris leaves for a call, the EMG machine begins pulsing with activity. A little later, Joe's wife Mary-Anne (Laura De Marchi) arrives with her daughter Jill (Maria Pia Marsale) to dress up her husband's corpse for the funeral, when she is killed in a horrific way by scalded with acid. Jill is then menaced by the re-animated cadaver of Schweik.Liza meets with John McCabe in a downtown bar to discuss her misgivings and anxieties.
