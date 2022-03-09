@@ -9,6 +9,8 @@ import argparse
 from itertools import islice
 from textattack.augmentation import EmbeddingAugmenter, BackTranslationAugmenter
 from transformers import MarianTokenizer, MarianMTModel
+from metric import calculate_perplexity, get_perplexity_data
+
 def custom_back_translate(texts, target_language='de'):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print (f"Back Trnaslation Using: {device}")
@@ -44,11 +46,20 @@ def custom_back_translate(texts, target_language='de'):
         return back_translated_texts
 
     # batch the input text so that memory doesn't exceed limit
-    batch_size  = 16
+    batch_size  = 8
     result = []
+    perplexity = []
+    # perpleixty_true_text = []
+    # perpleixty_translated_text = []
     for start in tqdm(range(0, len(texts), batch_size)):
-        result.extend(back_translate(texts[start: start+batch_size], source_lang="en", target_lang=target_language))
-    return result
+        translated = back_translate(texts[start: start+batch_size], source_lang="en", target_lang=target_language)
+        result.extend(translated)
+        perplexity.extend(list(starmap(get_perplexity_data, zip(texts[start: start+batch_size], translated))))
+        break
+        # perplexity_true, perplexity_translated = calculate_perplexity(texts[start: start+batch_size], translated)
+        # perpleixty_true_text.extend(perplexity_true)
+        # perpleixty_translated_text.extend(perplexity_translated)
+    return result, perplexity
 
 # given some context can be too large. we only back translate the portion around the answer index
 def get_context_to_back_translate(context, answer):
@@ -57,8 +68,20 @@ def get_context_to_back_translate(context, answer):
         start_index = min(start_index, answer["answer_start"][i])
         end_index = max(end_index, answer["answer_start"][i] + len(answer["text"][i]))
     padding = 150 # padd 150 words before and after start and end index
+    extra_start_padding, extra_end_padding = 0, 0
+    maximum_extra = 100
+    sentence_end_char = ['.', '?', '!']
     excerpt_start = max(0, start_index - padding)
     excerpt_end = min(end_index + padding, len(context))
+
+    while excerpt_start > 0 and context[excerpt_start] not in sentence_end_char and extra_start_padding < maximum_extra:
+        excerpt_start -= 1
+        extra_start_padding += 1
+
+    while excerpt_end < len(context) and context[excerpt_end] not in sentence_end_char and extra_end_padding < maximum_extra:
+        excerpt_end += 1
+        extra_end_padding += 1
+
     return context[excerpt_start: excerpt_end]
 
 
@@ -79,36 +102,50 @@ def get_new_data(context, question, answer):
 
 
 
-def filter_valid_augmentated_data(original_dataset, augmented_context_list, augmented_question_list):
+def filter_valid_augmentated_data(original_dataset, augmented_context_list, augmented_question_list, context_perplexity, question_perplexity):
     total_record_sz = len(original_dataset["id"])
-    assert (len(augmented_context_list) == len(original_dataset["context"]))
-    assert (len(augmented_question_list) == len(original_dataset["question"]))
+    # assert (len(augmented_context_list) == len(original_dataset["context"]))
+    # assert (len(augmented_question_list) == len(original_dataset["question"]))
     for i in range(total_record_sz):
         context, question, answer, old_id = original_dataset['context'][i], original_dataset['question'][i], original_dataset['answer'][i], \
                                             original_dataset['id'][i]
         # first yield the original output:
-        yield context, question, answer, old_id
+        yield context, question, answer, old_id, None, None
 
         # Output the augment context
         try:
-            yield get_new_data(augmented_context_list[i], question, answer)
+            new_context, new_question, new_answer, new_id = get_new_data(augmented_context_list[i], question, answer)
+            print("========================================================")
+            print(f"Original context: {context}")
+            print(f"Translated context: {new_context}")
+            print(f"Perplexity: {context_perplexity[i]}")
+
+
+            yield new_context, new_question, new_answer, new_id, context_perplexity[i], None
         except Exception as e:
             print (e)
 
         # Output augmented question
         try:
-            yield get_new_data(augmented_context_list[i], augmented_question_list[i], answer)
+            new_context, new_question, new_answer, new_id = get_new_data(context, augmented_question_list[i], answer)
+            print("========================================================")
+            print(f"Original question: {question}")
+            print(f"Translated question: {new_question}")
+            print(f"Perplexity: {question_perplexity[i]}")
+
+            yield new_context, new_question, new_answer, new_id, None, question_perplexity[i]
+
         except Exception as e:
             print (e)
 
         # change the answer word to a different word
-        for transformed_answer in EmbeddingAugmenter(transformations_per_example=1).augment(answer["text"][0]):
-            try:
-                # we will swap out the transformed words in context.
-                transformed_context = re.sub(answer["text"][0], transformed_answer, context)
-                yield get_new_data(transformed_context, question, {"text": [transformed_answer]})
-            except Exception as e:
-                print(e)
+        # for transformed_answer in EmbeddingAugmenter(transformations_per_example=1).augment(answer["text"][0]):
+        #     try:
+        #         # we will swap out the transformed words in context.
+        #         transformed_context = re.sub(answer["text"][0], transformed_answer, context)
+        #         yield get_new_data(transformed_context, question, {"text": [transformed_answer]})
+        #     except Exception as e:
+        #         print(e)
 
 
 
@@ -116,25 +153,27 @@ def data_set_to_augment(data_set_path):
     data_dict = util.read_squad(data_set_path)
     out_data_path = os.path.join(os.path.dirname(data_set_path), os.path.basename(data_set_path) + "_augmented")
 
-    augmented_data_dict ={'question': [], 'context': [], 'id': [], 'answer': []}
-    augmented_context_de = custom_back_translate(list(starmap(get_context_to_back_translate, zip(data_dict["context"], data_dict["answer"]))),
+    augmented_data_dict ={'question': [], 'context': [], 'id': [], 'answer': [], 'context_perplexity': [], 'question_perplexity': []}
+    augmented_context_de, context_perplexity = custom_back_translate(list(starmap(get_context_to_back_translate, zip(data_dict["context"], data_dict["answer"]))),
                                                  target_language='de')
-    augmented_question_de = custom_back_translate(data_dict["question"], target_language='de')
+    augmented_question_de, question_perplexity = custom_back_translate(data_dict["question"], target_language='de')
 
-    for augmented_context, augmented_question, augmented_answer, augmented_id in filter_valid_augmentated_data(data_dict, augmented_context_de, augmented_question_de):
+    for augmented_context, augmented_question, augmented_answer, augmented_id, context_perplexity, question_perplexity in filter_valid_augmentated_data(data_dict, augmented_context_de, augmented_question_de, context_perplexity, question_perplexity):
         augmented_data_dict['question'].append(augmented_question)
         augmented_data_dict['context'].append(augmented_context)
         augmented_data_dict['id'].append(augmented_id)
         augmented_data_dict['answer'].append(augmented_answer)
+        augmented_data_dict['context_perplexity'].append(context_perplexity)
+        augmented_data_dict['question_perplexity'].append(context_perplexity)
 
     util.write_squad(out_data_path, augmented_data_dict)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process some integers.')
-    parser.add_argument('--domain', type=str,
+    parser.add_argument('--domain', type=str, default="indomain_train",
                         help='string name for domain directory (indomain_train|indomain_val|oodomain_train|etc')
-    parser.add_argument('--datasets', type=str,
-                        help='list of questions nat_questions newsqa connected by comma')
+    parser.add_argument('--datasets', type=str, default="duorc",
+                        help='list of questions nat_questions_augmented newsqa_augmented connected by comma')
 
     args = parser.parse_args()
     for dataset in args.datasets.split(','):
@@ -150,10 +189,10 @@ if __name__ == "__main__":
     # """
     #
     # print(custom_back_translate([text_1, text_2]))
-    # data_set_to_augment("/home/kaiyuewang/QAGAN/datasets/oodomain_train/race")
-    # data_set_to_augment("/home/kaiyuewang/QAGAN/datasets/oodomain_train/relation_extraction")
+    # data_set_to_augment("/home/kaiyuewang/QAGAN/datasets/oodomain_train/race_augmented")
+    # data_set_to_augment("/home/kaiyuewang/QAGAN/datasets/oodomain_train/relation_extraction_augmented")
 
-    # original_dict = util.read_squad("/home/kaiyuewang/QAGAN/datasets/oodomain_train/duorc")
+    # original_dict = util.read_squad("/home/kaiyuewang/QAGAN/datasets/oodomain_train/duorc_augmented")
     # new_dict = util.read_squad("/home/kaiyuewang/QAGAN/datasets/oodomain_train/duorc_augmented")
     # import json
     # print (json.dumps(original_dict, sort_keys=True) == json.dumps(new_dict, sort_keys=True))

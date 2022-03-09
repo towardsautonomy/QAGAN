@@ -212,12 +212,13 @@ def write_squad(path, data_dict):
         data_entry = {"paragraphs": [
             {
                 "context": data_dict["context"][record_idx],
+                "context_perplexity": data_dict["context_perplexity"][record_idx],
                 "qas": [
                     {
                         "question": data_dict["question"][record_idx],
                         "id": data_dict["id"][record_idx],
-                        "answers": construct_answer_entry(data_dict["answer"][record_idx])
-
+                        "answers": construct_answer_entry(data_dict["answer"][record_idx]),
+                        "question_perplexity": data_dict["question_perplexity"][record_idx],
                     }
                 ]
             }
@@ -239,6 +240,14 @@ def downsample_dataset_dir(data_dict, sample_fraction, orignal_ids=set()):
     new_data_dict = {'question': [], 'context': [], 'id': [], 'answer': []}
     for i in range(len(data_dict['id'])):
         if random.random() < sample_fraction or data_dict['id'][i] in orignal_ids:
+            if data_dict['id'][i] not in orignal_ids:
+                print ("============================================")
+                print ("Question: ", data_dict['question'][i])
+                print("Context: ", data_dict['context'][i])
+                print("Answer: ", data_dict['answer'][i])
+
+                print ("============================================")
+
             new_data_dict['question'].append(data_dict['question'][i])
             new_data_dict['context'].append(data_dict['context'][i])
             new_data_dict['id'].append(data_dict['id'][i])
@@ -250,12 +259,14 @@ def read_squad(path):
     path = Path(path)
     with open(path, 'rb') as f:
         squad_dict = json.load(f)
-    data_dict = {'question': [], 'context': [], 'id': [], 'answer': []}
+    data_dict = {'question': [], 'context': [], 'id': [], 'answer': [], 'context_perplexity': [], 'question_perplexity': []}
     for group in squad_dict['data']:
         for passage in group['paragraphs']:
             context = passage['context']
+            context_perplexity = passage.get('context_perplexity', None)
             for qa in passage['qas']:
                 question = qa['question']
+                question_perplexity = qa.get('question_perplexity', None)
                 if len(qa['answers']) == 0:
                     data_dict['question'].append(question)
                     data_dict['context'].append(context)
@@ -266,11 +277,13 @@ def read_squad(path):
                         data_dict['context'].append(context)
                         data_dict['id'].append(qa['id'])
                         data_dict['answer'].append(answer)
+                        data_dict['context_perplexity'].append(context_perplexity)
+                        data_dict['question_perplexity'].append(question_perplexity)
     id_map = ddict(list)
     for idx, qid in enumerate(data_dict['id']):
         id_map[qid].append(idx)
 
-    data_dict_collapsed = {'question': [], 'context': [], 'id': []}
+    data_dict_collapsed = {'question': [], 'context': [], 'id': [], 'context_perplexity': [], 'question_perplexity': []}
     if data_dict['answer']:
         data_dict_collapsed['answer'] = []
     for qid in id_map:
@@ -278,6 +291,8 @@ def read_squad(path):
         data_dict_collapsed['question'].append(data_dict['question'][ex_ids[0]])
         data_dict_collapsed['context'].append(data_dict['context'][ex_ids[0]])
         data_dict_collapsed['id'].append(qid)
+        data_dict_collapsed['context_perplexity'].append(data_dict['context_perplexity'][ex_ids[0]])
+        data_dict_collapsed['question_perplexity'].append(data_dict['question_perplexity'][ex_ids[0]])
         if data_dict['answer']:
             all_answers = [data_dict['answer'][idx] for idx in ex_ids]
             data_dict_collapsed['answer'].append({'answer_start': [answer['answer_start'] for answer in all_answers],
@@ -524,3 +539,8 @@ def compute_f1(a_gold, a_pred):
     recall = 1.0 * num_same / len(gold_toks)
     f1 = (2 * precision * recall) / (precision + recall)
     return f1
+
+if __name__ == "__main__":
+    read_data = read_squad("/home/kaiyuewang/QAGAN/datasets/indomain_train/duorc_augmented")
+    another_data = read_squad("/home/kaiyuewang/QAGAN/datasets/indomain_train/duorc")
+    print ("here")

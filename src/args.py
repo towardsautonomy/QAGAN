@@ -30,7 +30,7 @@ def get_args():
     parser.add_argument('--val-dir', type=str, default='datasets/indomain_val')
     parser.add_argument('--finetune-val-dir', type=str, default='datasets/oodomain_val')
     parser.add_argument('--eval-dir', type=str, default='datasets/oodomain_test')
-    parser.add_argument('--eval-datasets', type=str, default='race_augmented,relation_extraction_augmented,duorc_augmented')
+    parser.add_argument('--eval-datasets', type=str, default='race,relation_extraction,duorc')
     parser.add_argument('--do-train', action='store_true')
     parser.add_argument('--do-eval', action='store_true')
     parser.add_argument('--sub-file', type=str, default='')
