@@ -52,7 +52,7 @@ elif [ "$MODE" == "evaluate" ]; then
                  --variant ${variant} \
                  --run-name ${experiment} \
                  --sub-file mtl_submission_val.csv \
-                 --save-dir save/${variant}.${experiment}-01 --eval-dir datasets/oodomain_val --recompute-features
+                 --save-dir save/${variant}.${experiment}-01 --eval-dir datasets/oodomain_val #--recompute-features
 
 elif [ "$MODE" == "test" ]; then
 	# evaluate

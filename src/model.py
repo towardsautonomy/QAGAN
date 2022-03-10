@@ -14,6 +14,7 @@ class QAGANConfig:
     dropout=0.1
     disc_true_lambda=0.5
     disc_fake_lambda=0.5
+    kld_lambda=0.1
     discriminate_hidden_layers=False
     discriminate_cls=False
     discriminate_cls_sep=False
@@ -25,6 +26,10 @@ class QAGANConfig:
     max_steps = 250000
     anneal = True
     prediction_head = 'linear'
+    constrain_hidden_repr = False
+
+    def __repr__(self):
+        return self.__str__()
 
     def __init__(self, **kwargs):
         for k,v in kwargs.items():
@@ -301,13 +306,8 @@ class QAConditionalAttPredictionHead(nn.Module):
         self.hidden_size = hidden_size
         self.attn_start = TransformersEncoder(num_heads=8, hidden_size=hidden_size)
         self.attn_end = TransformersEncoder(num_heads=8, hidden_size=2*hidden_size)
-        self.feed_forward = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size)
-        )
         self.qa_start_logit = nn.Linear(hidden_size, logit_size)
-        self.qa_end_logit = nn.Linear(hidden_size+1, logit_size)
+        self.qa_end_logit = nn.Linear(2*hidden_size, logit_size)
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(0.1, inplace=False)
         self.init_weights()
@@ -338,7 +338,7 @@ class QAConditionalTransformersPredictionHead(nn.Module):
         additional MLP to generate start and end logits.
     """
 
-    def __init__(self, input_size, hidden_size=64, logit_size=1):
+    def __init__(self, hidden_size=64, logit_size=1):
         super(QAConditionalTransformersPredictionHead, self).__init__()
         self.encoder = TransformersEncoder(num_heads=8, hidden_size=hidden_size)
         self.decoder = TransformersDecoder(num_heads=8, hidden_size=hidden_size)
@@ -456,6 +456,19 @@ class QAGAN(nn.Module):
         # set up loss dictionary
         loss_dict = {'NLL': qa_loss.item()}
         total_loss = qa_loss
+
+        # constrain hidden representation to conform
+        # to a normal distribution
+        if self.config.constrain_hidden_repr:
+            normal_dist = self.sample_gaussian(sequence_output[:, 0].size()).to(sequence_output.device)
+            normal_prob = torch.sigmoid(normal_dist)
+            seq_prob = F.log_softmax(sequence_output[:, 0], dim=-1)
+            # kld_loss = self.kl_div(sequence_output, normal_dist)
+            kl_criterion = nn.KLDivLoss(reduction="batchmean")
+            kld_loss = self.config.kld_lambda * kl_criterion(seq_prob, normal_prob) / normal_prob.size(1)
+            total_loss += kld_loss
+            loss_dict['KLD'] = kld_loss.item()
+
         # discriminator
         if self.config.use_discriminator and \
            (start_positions is not None) and \
@@ -547,6 +560,61 @@ class QAGAN(nn.Module):
 
         else:
             raise ValueError("Unknown loss type: {}".format(loss))
+
+    def sample_gaussian(self, size):
+        # sample from N(0, I)
+        z = torch.normal(mean=0.0, std=1.0, size=size)
+        return z
+
+    def kl_div(self, p, q):
+        """
+        Computes the KL divergence between two categorical distributions
+        Args:
+            p tensor: (batch, dim): p distribution
+            q tensor: (batch, dim): q distribution under KL(p || q)
+        Return:
+            kl: tensor: (batch,) kl between each sample
+        """
+        log_p = torch.log(p, dim=-1)
+        log_q = torch.log(q, dim=-1)
+        kl = p * (log_p - log_q)
+        kl = kl.sum(dim=-1)
+        return kl
+
+    def log_normal(self, x, m, v):
+        """
+        Computes the elem-wise log probability of a Gaussian and then sum over the
+        last dim. Basically we're assuming all dims are batch dims except for the
+        last dim.
+        Args:
+            x: tensor: (batch_1, batch_2, ..., batch_k, dim): Observation
+            m: tensor: (batch_1, batch_2, ..., batch_k, dim): Mean
+            v: tensor: (batch_1, batch_2, ..., batch_k, dim): Variance
+        Return:
+            log_prob: tensor: (batch_1, batch_2, ..., batch_k): log probability of
+                each sample. Note that the summation dimension is not kept
+        """
+        sigma = torch.sqrt(v)
+        log_prob_element_wise = -((x - m).pow(2)/(2 * sigma.pow(2))) - 0.5 * np.log(2 * np.pi) - torch.log(sigma)
+        log_prob = log_prob_element_wise.sum(dim=-1)
+
+        return log_prob
+
+    def gaussian_parameters(self, h, dim=-1):
+        """
+        Converts generic real-valued representations into mean and variance
+        parameters of a Gaussian distribution
+        Args:
+            h: tensor: (batch, ..., dim, ...): Arbitrary tensor
+            dim: int: (): Dimension along which to split the tensor for mean and
+                variance
+        Returns:
+            m: tensor: (batch, ..., dim / 2, ...): Mean
+            v: tensor: (batch, ..., dim / 2, ...): Variance
+        """
+        m, h = torch.split(h, h.size(dim) // 2, dim=dim)
+        v = F.softplus(h) + 1e-8
+        return m, v
 
     def get_sep_embedding(self, input_ids, sequence_output):
         batch_size = input_ids.size(0)
