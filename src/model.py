@@ -14,7 +14,7 @@ class QAGANConfig:
     dropout=0.1
     disc_true_lambda=0.5
     disc_fake_lambda=0.5
-    kld_lambda=0.05
+    kld_lambda=0.1
     discriminate_hidden_layers=False
     discriminate_cls=False
     discriminate_cls_sep=False
