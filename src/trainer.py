@@ -58,7 +58,7 @@ def prepare_train_data(dataset_dict, tokenizer):
     tokenized_examples = tokenizer(dataset_dict['question'],
                                    dataset_dict['context'],
                                    truncation="only_second",
-                                   stride=128,
+                                   stride=129,
                                    max_length=384,
                                    return_overflowing_tokens=True,
                                    return_offsets_mapping=True,

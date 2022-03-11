@@ -51,6 +51,7 @@ def custom_back_translate(texts, target_language='de', use_fast_metric=False):
     perplexity = []
     perpleixty_true_text = []
     perpleixty_translated_text = []
+    print ("length of current batch: ", map(len, texts))
     for start in tqdm(range(0, len(texts), batch_size)):
         translated = back_translate(texts[start: start+batch_size], source_lang="en", target_lang=target_language)
         result.extend(translated)
@@ -164,7 +165,7 @@ def data_set_to_augment(data_set_path, use_fast_metric=False):
         augmented_data_dict['id'].append(augmented_id)
         augmented_data_dict['answer'].append(augmented_answer)
         augmented_data_dict['context_perplexity'].append(context_perplexity)
-        augmented_data_dict['question_perplexity'].append(context_perplexity)
+        augmented_data_dict['question_perplexity'].append(question_perplexity)
 
     util.write_squad(out_data_path, augmented_data_dict)
 

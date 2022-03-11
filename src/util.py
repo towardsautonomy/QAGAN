@@ -239,14 +239,36 @@ def write_squad(path, data_dict):
 def downsample_dataset_dir(data_dict, sample_fraction, orignal_ids=set()):
     new_data_dict = {'question': [], 'context': [], 'id': [], 'answer': []}
     for i in range(len(data_dict['id'])):
-        if random.random() < sample_fraction or data_dict['id'][i] in orignal_ids:
-            if data_dict['id'][i] not in orignal_ids:
-                print ("============================================")
-                print ("Question: ", data_dict['question'][i])
+        if data_dict['id'][i] in orignal_ids:
+            new_data_dict['question'].append(data_dict['question'][i])
+            new_data_dict['context'].append(data_dict['context'][i])
+            new_data_dict['id'].append(data_dict['id'][i])
+            new_data_dict['answer'].append(data_dict['answer'][i])
+        elif data_dict['context_perplexity'][i] is None and data_dict['question_perplexity'][i] is None:
+            print ("old data?")
+            print("============================================")
+            print("Question: ", data_dict['question'][i])
+            print("Context: ", data_dict['context'][i])
+            print("Answer: ", data_dict['answer'][i])
+            print("Context Perplexity: ", data_dict['context_perplexity'][i])
+            print("Question Perplexity: ", data_dict['question_perplexity'][i])
+            print("============================================")
+        elif random.random() < sample_fraction:
+
+            percentage = 100
+            if data_dict['context_perplexity'][i] is not None:
+                percentage = data_dict['context_perplexity'][i]['translated_text'] / data_dict['context_perplexity'][i]['original_text']
+            else:
+                percentage = data_dict['question_perplexity'][i]['translated_text'] / data_dict['question_perplexity'][i]['original_text']
+
+            if percentage > 2:
+                print("============================================")
+                print("Question: ", data_dict['question'][i])
                 print("Context: ", data_dict['context'][i])
                 print("Answer: ", data_dict['answer'][i])
-
-                print ("============================================")
+                print("Context Perplexity: ", data_dict['context_perplexity'][i])
+                print("Question Perplexity: ", data_dict['question_perplexity'][i])
+                print("============================================")
 
             new_data_dict['question'].append(data_dict['question'][i])
             new_data_dict['context'].append(data_dict['context'][i])
