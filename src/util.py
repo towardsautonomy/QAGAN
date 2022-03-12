@@ -256,12 +256,15 @@ def downsample_dataset_dir(data_dict, sample_fraction, orignal_ids=set()):
         elif random.random() < sample_fraction:
 
             percentage = 100
+            perplexity = 0
             if data_dict['context_perplexity'][i] is not None:
                 percentage = data_dict['context_perplexity'][i]['translated_text'] / data_dict['context_perplexity'][i]['original_text']
+                perplexity = data_dict['context_perplexity'][i]['translated_text']
             else:
                 percentage = data_dict['question_perplexity'][i]['translated_text'] / data_dict['question_perplexity'][i]['original_text']
+                perplexity = data_dict['question_perplexity'][i]['translated_text']
 
-            if percentage > 2:
+            if percentage > 2 and perplexity > 400:
                 print("============================================")
                 print("Question: ", data_dict['question'][i])
                 print("Context: ", data_dict['context'][i])
@@ -269,6 +272,7 @@ def downsample_dataset_dir(data_dict, sample_fraction, orignal_ids=set()):
                 print("Context Perplexity: ", data_dict['context_perplexity'][i])
                 print("Question Perplexity: ", data_dict['question_perplexity'][i])
                 print("============================================")
+                continue
 
             new_data_dict['question'].append(data_dict['question'][i])
             new_data_dict['context'].append(data_dict['context'][i])

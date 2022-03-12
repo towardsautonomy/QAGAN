@@ -46,7 +46,7 @@ def custom_back_translate(texts, target_language='de', use_fast_metric=False):
         return back_translated_texts
 
     # batch the input text so that memory doesn't exceed limit
-    batch_size  = 8
+    batch_size  = 16
     result = []
     perplexity = []
     perpleixty_true_text = []

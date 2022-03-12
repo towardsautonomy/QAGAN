@@ -164,7 +164,7 @@ class Trainer():
                 train_dataset, _ = get_dataset(args, args.finetune_datasets, args.finetune_train_dir, self.tokenizer, 'train')
             else:
                 logger.info("Preparing Training Data...")
-                train_dataset, _ = get_dataset(args, args.train_datasets, args.train_dir, self.tokenizer, 'train', args.decimate_dataset)
+                train_dataset, _ = get_dataset(args, args.train_datasets, args.train_dir, self.tokenizer, 'train', args.decimate_dataset, args.upsample_ood)
             if args.finetune:
                 logger.info("Preparing Fine-Tuning Validation Data...")
                 self.val_dataset, self.val_dict = \
@@ -330,7 +330,7 @@ class Trainer():
                     global_idx += 1
         return best_scores
 
-def get_dataset(args, datasets, data_dir, tokenizer, split_name, should_decmiate=False):
+def get_dataset(args, datasets, data_dir, tokenizer, split_name, should_decmiate=False, num_upsample=1):
     datasets = datasets.split(',')
     dataset_dict = None
     dataset_name=''
@@ -360,8 +360,19 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name, should_decmiate
         print (f"pre process: dataset: {dataset} has size: {len(dataset_dict_curr['id'])}")
         if should_decmiate:
             dataset_dict_curr = util.downsample_dataset_dir(dataset_dict_curr, dataset_sample_fraction[dataset], original_dataset_ids)
-        print (f"post process: dataset: {dataset} has size: {len(dataset_dict_curr['id'])}")
+        import copy
+        import uuid
+        if dataset in ['duorc', 'race', 'relation_extraction', 'duorc_augmented', 'race_augmented', 'relation_extraction_augmented']:
+            temp_dataset_dict = copy.deepcopy(dataset_dict_curr)
+            for _ in range(num_upsample - 1):
+                for key in dataset_dict_curr:
+                    if key == 'id':
+                        dataset_dict_curr[key].extend([str(uuid.uuid4()) for _ in range(len(temp_dataset_dict[key]))])
+                    else:
+                        dataset_dict_curr[key].extend(copy.deepcopy(temp_dataset_dict[key]))
 
+        print (f"post process: dataset: {dataset} has size: {len(dataset_dict_curr['id'])}")
+        print (len(set(dataset_dict_curr['id'])))
         dataset_dict = util.merge(dataset_dict, dataset_dict_curr, i)
     print ("finished loading dataset_dict")
     data_encodings = read_and_process(args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
