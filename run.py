@@ -2,6 +2,8 @@ import os
 import torch
 import csv
 import src.util as util
+import pprint
+import json
 from transformers import DistilBertTokenizerFast
 from transformers import DistilBertForQuestionAnswering
 from transformers import DistilBertModel, DistilBertConfig
@@ -14,7 +16,7 @@ def main():
     # define parser and arguments
     args = get_args()
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
+    # set random seed
     util.set_seed(args.seed)
 
     # load pre-trained base model
@@ -54,6 +56,13 @@ def main():
                                   discriminate_cls=True,
                                   prediction_head='conditional_linear',
                                   num_datasets=6)
+        elif args.variant == 'qagan-cond-kld':
+            qconfig = QAGANConfig(backbone=backbone, 
+                                  tokenizer=tokenizer, 
+                                  use_discriminator=True,
+                                  discriminate_cls=True,
+                                  prediction_head='conditional_linear',
+                                  constrain_hidden_repr=True)
         elif args.variant == 'qagan-cond-att':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
@@ -68,16 +77,21 @@ def main():
                                   prediction_head='conditional_transformers')
         else:
             raise ValueError
+        # define model
+        model = QAGAN(config=qconfig)
 
-        # get the QAGAN model
-        if args.finetune or args.load_pretrained:
-            assert args.pretrained_model != 'none', 'Must specify a pretrained model to load'
+
+    # load pre-trained model
+    if args.finetune or args.load_pretrained:
+        assert args.pretrained_model != 'none', 'Must specify a pretrained model to load'
+        assert args.pretrained_model != '', 'Must specify a pretrained model to load'
+        if 'qagan' in args.variant:
             qconfig['anneal'] = False
             qconfig['fake_discriminator_warmup_steps'] = 0
             model = QAGAN(config=qconfig).from_pretrained(args.pretrained_model)
         else:
-            model = QAGAN(config=qconfig)
-
+            model = DistilBertForQuestionAnswering.from_pretrained(args.pretrained_model)
+            
     # mode of operation
     if args.do_train:
         if not os.path.exists(args.save_dir):
