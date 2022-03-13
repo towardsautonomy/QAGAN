@@ -152,7 +152,7 @@ class Trainer():
             logger.info(f'Args: {json.dumps(vars(args), indent=4, sort_keys=True)}')
             if args.finetune:
                 logger.info("Preparing Fine-Tuning Training Data...")
-                train_dataset, _ = get_dataset(args, args.finetune_datasets, args.finetune_train_dir, self.tokenizer, 'train')
+                train_dataset, _ = get_dataset(args, args.finetune_datasets, args.finetune_train_dir, self.tokenizer, 'train', args.upsample)
             else:
                 logger.info("Preparing Training Data...")
                 train_dataset, _ = get_dataset(args, args.train_datasets, args.train_dir, self.tokenizer, 'train')
@@ -319,13 +319,25 @@ class Trainer():
                     global_idx += 1
         return best_scores
 
-def get_dataset(args, datasets, data_dir, tokenizer, split_name):
+def get_dataset(args, datasets, data_dir, tokenizer, split_name, num_upsample=1):
     datasets = datasets.split(',')
     dataset_dict = None
     dataset_name=''
     for i, dataset in enumerate(datasets):
         dataset_name += f'_{dataset}'
         dataset_dict_curr = util.read_squad(f'{data_dir}/{dataset}')
+
+        import copy
+        import uuid
+        if dataset in ['duorc', 'race', 'relation_extraction', 'duorc_augmented', 'race_augmented', 'relation_extraction_augmented']:
+            temp_dataset_dict = copy.deepcopy(dataset_dict_curr)
+            for _ in range(num_upsample - 1):
+                for key in dataset_dict_curr:
+                    if key == 'id':
+                        dataset_dict_curr[key].extend([str(uuid.uuid4()) for _ in range(len(temp_dataset_dict[key]))])
+                    else:
+                        dataset_dict_curr[key].extend(copy.deepcopy(temp_dataset_dict[key]))
         dataset_dict = util.merge(dataset_dict, dataset_dict_curr, i)
+
     data_encodings = read_and_process(args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
     return util.QADataset(data_encodings, train=(split_name=='train')), dataset_dict

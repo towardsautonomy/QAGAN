@@ -36,5 +36,7 @@ def get_args():
     parser.add_argument('--sub-file', type=str, default='')
     parser.add_argument('--no-visualization', action='store_true')
     parser.add_argument('--eval-every', type=int, default=5000)
+    parser.add_argument('--upsample', type=int, default=5)
+
     args = parser.parse_args()
     return args
