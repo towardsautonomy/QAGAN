@@ -115,11 +115,6 @@ def filter_valid_augmentated_data(original_dataset, augmented_context_list, augm
         # Output the augment context
         try:
             new_context, new_question, new_answer, new_id = get_new_data(augmented_context_list[i], question, answer)
-            # print("========================================================")
-            # print(f"Original context: {context}")
-            # print(f"Translated context: {new_context}")
-            # print(f"Perplexity: {context_perplexity[i]}")
-
 
             yield new_context, new_question, new_answer, new_id, context_perplexity[i], None
         except Exception as e:
@@ -128,11 +123,6 @@ def filter_valid_augmentated_data(original_dataset, augmented_context_list, augm
         # Output augmented question
         try:
             new_context, new_question, new_answer, new_id = get_new_data(context, augmented_question_list[i], answer)
-            # print("========================================================")
-            # print(f"Original question: {question}")
-            # print(f"Translated question: {new_question}")
-            # print(f"Perplexity: {question_perplexity[i]}")
-
             yield new_context, new_question, new_answer, new_id, None, question_perplexity[i]
 
         except Exception as e:
@@ -181,21 +171,4 @@ if __name__ == "__main__":
     for dataset in args.datasets.split(','):
         print (os.path.join(os.path.dirname(__file__), "..", "datasets", args.domain, dataset))
         data_set_to_augment(os.path.join(os.path.dirname(__file__), "..", "datasets", args.domain, dataset), args.fast_metric)
-
-    # text_1 = """
-    # n\nNew Orleans, Louisiana, 1927. An enraged posse of men descend on the isolated Seven Doors Hotel deep in the swamps. They grab an artist called Schweik (Antoine Saint John), who is cloistered there. Accusing him of being a warlock, Schweik is dragged down to the cellar where he is savagely beaten with heavy chains, tortured with quicklime acid, and crucified with his wrists nailed to a cellar wall, despite his dire warnings of evil to be unleashed.New Orleans, 1981. Liza Merril (Catriona MacColl) is a young woman who arrives from New York City to claim the hotel as her inheritance. No sooner has architect friend Marin Avery (Michele Mirabella) begins to show her around the property, strange incidents begin to happen. A painter (Anthony Flees) falls off his rig and is horribly injured, coughing up blood and babbling about, \"the eyes, the eyes.\" Dr. John McCabe (David Warbeck) arrives to take the injured man to the hospital, and offers Liza some sympathy. Next, a plumber, named Joe, attempts to repair a major leak in the flooded cellar. However, he is murdered by a presence that emerged from behind a slim-caked wall. The atmosphere at the hotel is further chilled by the creepy-looking servants, Arthur (Giampaolo Saccarola) and Martha (Veronica Lazar), who apparently come with the hotel. Martha discovers Joe's dead body in the cellar, and another much older cadaver lying in a pool of dirty water nearby. It is apparently that of Schweik, the artist.Driving down the 14-mile causeway to New Orleans, Liza encounters a strange blind woman, standing in the middle of the desolate highway. The blind woman introduces herself as Emily (Sarah Keller), and tells Liza that she has been waiting for her, although her eyes are occluded with cataracts. Liza drives Emily over to her opulently furnished house in New Orleans. Liza is warned by Emily to leave the hotel while she still can. Meanwhile at the hospital morgue, Dr. John McCabe is performing the autopsy on Joe the plumber while his assistant Harris (Al Cliver) wants to install an EMG machine to the corpse of Schweik. John laughs it off and leaves for lunch, while Harris remains behind to install the EMG machine. After Harris leaves for a call, the EMG machine begins pulsing with activity. A little later, Joe's wife Mary-Anne (Laura De Marchi) arrives with her daughter Jill (Maria Pia Marsale) to dress up her husband's corpse for the funeral, when she is killed in a horrific way by scalded with acid. Jill is then menaced by the re-animated cadaver of Schweik.Liza meets with John McCabe in a downtown bar to discuss her misgivings and anxieties.
-    # """
-    #
-    # text_2 = """
-    # i hate you so much stupid
-    # """
-    #
-    # print(custom_back_translate([text_1, text_2]))
-    # data_set_to_augment("/home/kaiyuewang/QAGAN/datasets/oodomain_train/race_augmented")
-    # data_set_to_augment("/home/kaiyuewang/QAGAN/datasets/oodomain_train/relation_extraction_augmented")
-
-    # original_dict = util.read_squad("/home/kaiyuewang/QAGAN/datasets/oodomain_train/duorc_augmented")
-    # new_dict = util.read_squad("/home/kaiyuewang/QAGAN/datasets/oodomain_train/duorc_augmented")
-    # import json
-    # print (json.dumps(original_dict, sort_keys=True) == json.dumps(new_dict, sort_keys=True))
 
