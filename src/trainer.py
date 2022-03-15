@@ -137,7 +137,7 @@ def read_and_process(args, tokenizer, dataset_dict, dir_name, dataset_name, spli
             tokenized_examples = prepare_train_data(dataset_dict, tokenizer)
         else:
             tokenized_examples = prepare_eval_data(dataset_dict, tokenizer)
-        # util.save_pickle(tokenized_examples, cache_path)
+        util.save_pickle(tokenized_examples, cache_path)
     return tokenized_examples
 
 class Trainer():
