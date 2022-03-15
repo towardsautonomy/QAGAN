@@ -180,7 +180,7 @@ class QADataset(Dataset):
         self.keys = ['input_ids', 'attention_mask', 'labels']
         if train:
             self.keys += ['start_positions', 'end_positions']
-        assert(all(key in self.encodings for key in self.keys))
+        assert(all(key in self.encodings for key in self.keys), "Expect {} but found: {}".format(self.keys, self.encodings.keys()))
 
     def __getitem__(self, idx):
         return {key : torch.tensor(self.encodings[key][idx]) for key in self.keys}
@@ -188,16 +188,95 @@ class QADataset(Dataset):
     def __len__(self):
         return len(self.encodings['input_ids'])
 
+def write_squad(path, data_dict):
+    """
+    Write data dict into squad_augmented data.
+    Args:
+        path: path to write data to
+        data_dict: data dict of the same format that is returned by read_squad function
+
+    Returns:
+
+    """
+
+    def construct_answer_entry(answer_dict):
+        return [
+            {
+                "answer_start": answer_dict["answer_start"][i],
+                "text": answer_dict["text"][i]
+            }
+            for i in range(len(answer_dict["answer_start"]))
+        ]
+
+    def construct_data_entry(data_dict, record_idx):
+        data_entry = {"paragraphs": [
+            {
+                "context": data_dict["context"][record_idx],
+                "context_perplexity": data_dict["context_perplexity"][record_idx],
+                "qas": [
+                    {
+                        "question": data_dict["question"][record_idx],
+                        "id": data_dict["id"][record_idx],
+                        "answers": construct_answer_entry(data_dict["answer"][record_idx]),
+                        "question_perplexity": data_dict["question_perplexity"][record_idx],
+                    }
+                ]
+            }
+
+        ]}
+        return data_entry
+
+    path = Path(path)
+    squad_dict = {"data": []}
+
+    total_record = len(data_dict['id'])
+    for record_idx in range(total_record):
+        squad_dict['data'].append(construct_data_entry(data_dict, record_idx))
+
+    with open(path, 'w') as f:
+        json.dump(squad_dict, f)
+
+def downsample_dataset_dir(data_dict, sample_fraction, orignal_ids=set()):
+    new_data_dict = {'question': [], 'context': [], 'id': [], 'answer': []}
+    for i in range(len(data_dict['id'])):
+        if data_dict['id'][i] in orignal_ids:
+            new_data_dict['question'].append(data_dict['question'][i])
+            new_data_dict['context'].append(data_dict['context'][i])
+            new_data_dict['id'].append(data_dict['id'][i])
+            new_data_dict['answer'].append(data_dict['answer'][i])
+        elif random.random() < sample_fraction:
+
+            percentage = 100
+            perplexity = 0
+            if data_dict['context_perplexity'][i] is not None:
+                percentage = data_dict['context_perplexity'][i]['translated_text'] / data_dict['context_perplexity'][i]['original_text']
+                perplexity = data_dict['context_perplexity'][i]['translated_text']
+            else:
+                percentage = data_dict['question_perplexity'][i]['translated_text'] / data_dict['question_perplexity'][i]['original_text']
+                perplexity = data_dict['question_perplexity'][i]['translated_text']
+
+            if percentage > 2 and perplexity > 400:
+                continue
+
+            new_data_dict['question'].append(data_dict['question'][i])
+            new_data_dict['context'].append(data_dict['context'][i])
+            new_data_dict['id'].append(data_dict['id'][i])
+            new_data_dict['answer'].append(data_dict['answer'][i])
+    return new_data_dict
+
+
 def read_squad(path):
     path = Path(path)
     with open(path, 'rb') as f:
         squad_dict = json.load(f)
-    data_dict = {'question': [], 'context': [], 'id': [], 'answer': []}
+    data_dict = {'question': [], 'context': [], 'id': [], 'answer': [], 'context_perplexity': [], 'question_perplexity': []}
     for group in squad_dict['data']:
         for passage in group['paragraphs']:
             context = passage['context']
+            context_perplexity = passage.get('context_perplexity', None)
             for qa in passage['qas']:
                 question = qa['question']
+                question_perplexity = qa.get('question_perplexity', None)
                 if len(qa['answers']) == 0:
                     data_dict['question'].append(question)
                     data_dict['context'].append(context)
@@ -208,11 +287,13 @@ def read_squad(path):
                         data_dict['context'].append(context)
                         data_dict['id'].append(qa['id'])
                         data_dict['answer'].append(answer)
+                        data_dict['context_perplexity'].append(context_perplexity)
+                        data_dict['question_perplexity'].append(question_perplexity)
     id_map = ddict(list)
     for idx, qid in enumerate(data_dict['id']):
         id_map[qid].append(idx)
 
-    data_dict_collapsed = {'question': [], 'context': [], 'id': []}
+    data_dict_collapsed = {'question': [], 'context': [], 'id': [], 'context_perplexity': [], 'question_perplexity': []}
     if data_dict['answer']:
         data_dict_collapsed['answer'] = []
     for qid in id_map:
@@ -220,6 +301,8 @@ def read_squad(path):
         data_dict_collapsed['question'].append(data_dict['question'][ex_ids[0]])
         data_dict_collapsed['context'].append(data_dict['context'][ex_ids[0]])
         data_dict_collapsed['id'].append(qid)
+        data_dict_collapsed['context_perplexity'].append(data_dict['context_perplexity'][ex_ids[0]])
+        data_dict_collapsed['question_perplexity'].append(data_dict['question_perplexity'][ex_ids[0]])
         if data_dict['answer']:
             all_answers = [data_dict['answer'][idx] for idx in ex_ids]
             data_dict_collapsed['answer'].append({'answer_start': [answer['answer_start'] for answer in all_answers],
@@ -249,7 +332,7 @@ def add_end_idx(answers, contexts):
         start_idx = answer['answer_start']
         end_idx = start_idx + len(gold_text)
 
-        # sometimes squad answers are off by a character or two – fix this
+        # sometimes squad_augmented answers are off by a character or two – fix this
         if context[start_idx:end_idx] == gold_text:
             answer['answer_end'] = end_idx
         elif context[start_idx-1:end_idx-1] == gold_text:

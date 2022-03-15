@@ -54,7 +54,8 @@ def main():
                                   tokenizer=tokenizer, 
                                   use_discriminator=True,
                                   discriminate_cls=True,
-                                  prediction_head='conditional_linear')
+                                  prediction_head='conditional_linear',
+                                  num_datasets=6)
         elif args.variant == 'qagan-cond-kld':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 

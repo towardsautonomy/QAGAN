@@ -8,7 +8,7 @@ import csv
 from src import util
 from transformers import AdamW
 from tensorboardX import SummaryWriter
-
+from textattack.augmentation import EmbeddingAugmenter
 
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
@@ -50,10 +50,15 @@ def prepare_eval_data(dataset_dict, tokenizer):
     return tokenized_examples
 
 def prepare_train_data(dataset_dict, tokenizer):
+    # remove questions that are too long
+    question_idx_too_long = sorted([i for i in range(len(dataset_dict['question'])) if len(dataset_dict['question'][i]) > 384], reverse=True)
+    for idx_to_remove in question_idx_too_long:
+        for key in dataset_dict:
+            dataset_dict[key].pop(idx_to_remove)
     tokenized_examples = tokenizer(dataset_dict['question'],
                                    dataset_dict['context'],
                                    truncation="only_second",
-                                   stride=128,
+                                   stride=129,
                                    max_length=384,
                                    return_overflowing_tokens=True,
                                    return_offsets_mapping=True,
@@ -104,15 +109,19 @@ def prepare_train_data(dataset_dict, tokenizer):
             # Note: we could go after the last offset if the answer is the last word (edge case).
             while token_start_index < len(offsets) and offsets[token_start_index][0] <= start_char:
                 token_start_index += 1
-            tokenized_examples["start_positions"].append(token_start_index - 1)
             while offsets[token_end_index][1] >= end_char:
                 token_end_index -= 1
+
             tokenized_examples["end_positions"].append(token_end_index + 1)
+            tokenized_examples["start_positions"].append(token_start_index - 1)
+
             # assertion to check if this checks out
             context = dataset_dict['context'][sample_index]
             offset_st = offsets[tokenized_examples['start_positions'][-1]][0]
             offset_en = offsets[tokenized_examples['end_positions'][-1]][1]
-            if context[offset_st : offset_en] != answer['text'][0]:
+            if context[offset_st : offset_en] != answer['text'][0] and \
+                    context[offset_st : offset_en].lower() != answer['text'][0].lower():
+                print (context[offset_st : offset_en], answer['text'][0])
                 inaccurate += 1
 
     total = len(tokenized_examples['id'])
@@ -155,7 +164,7 @@ class Trainer():
                 train_dataset, _ = get_dataset(args, args.finetune_datasets, args.finetune_train_dir, self.tokenizer, 'train')
             else:
                 logger.info("Preparing Training Data...")
-                train_dataset, _ = get_dataset(args, args.train_datasets, args.train_dir, self.tokenizer, 'train')
+                train_dataset, _ = get_dataset(args, args.train_datasets, args.train_dir, self.tokenizer, 'train', args.decimate_dataset, args.upsample_ood)
             if args.finetune:
                 logger.info("Preparing Fine-Tuning Validation Data...")
                 self.val_dataset, self.val_dict = \
@@ -198,10 +207,12 @@ class Trainer():
                 # Setup for forward
                 input_ids = batch['input_ids'].to(device)
                 attention_mask = batch['attention_mask'].to(device)
+                labels = batch['labels'].to(device)
                 batch_size = len(input_ids)
                 # model inputs
                 model_input_dict = {'input_ids': input_ids,
-                                    'attention_mask': attention_mask}
+                                    'attention_mask': attention_mask,
+                                    'labels': labels}
 
                 outputs = self.model(**model_input_dict)
                 # Forward
@@ -319,13 +330,51 @@ class Trainer():
                     global_idx += 1
         return best_scores
 
-def get_dataset(args, datasets, data_dir, tokenizer, split_name):
+def get_dataset(args, datasets, data_dir, tokenizer, split_name, should_decmiate=False, num_upsample=1):
     datasets = datasets.split(',')
     dataset_dict = None
     dataset_name=''
+
+    dataset_sample_fraction = {
+        "duorc_augmented": 1,
+        "nat_questions_augmented": .3,
+        "newsqa_augmented": .3,
+        "race_augmented": 1,
+        "relation_extraction_augmented": 1,
+        "squad_augmented": .3
+    }
     for i, dataset in enumerate(datasets):
         dataset_name += f'_{dataset}'
         dataset_dict_curr = util.read_squad(f'{data_dir}/{dataset}')
+        original_dataset_ids = set()
+        if "augmented" in dataset:
+            try:
+                original_dataset_name = dataset.replace("_augmented", "")
+                dataset_dict_orginal = util.read_squad(f'{data_dir}/{original_dataset_name}')
+                original_dataset_ids = set(dataset_dict_orginal["id"])
+            except Exception as e:
+                print (e)
+                pass
+
+
+        print (f"pre process: dataset: {dataset} has size: {len(dataset_dict_curr['id'])}")
+        if should_decmiate:
+            dataset_dict_curr = util.downsample_dataset_dir(dataset_dict_curr, dataset_sample_fraction[dataset], original_dataset_ids)
+        import copy
+        import uuid
+        if dataset in ['duorc', 'race', 'relation_extraction', 'duorc_augmented', 'race_augmented', 'relation_extraction_augmented']:
+            temp_dataset_dict = copy.deepcopy(dataset_dict_curr)
+            for _ in range(num_upsample - 1):
+                for key in dataset_dict_curr:
+                    if key == 'id':
+                        dataset_dict_curr[key].extend([str(uuid.uuid4()) for _ in range(len(temp_dataset_dict[key]))])
+                    else:
+                        dataset_dict_curr[key].extend(copy.deepcopy(temp_dataset_dict[key]))
+
+        print (f"post process: dataset: {dataset} has size: {len(dataset_dict_curr['id'])}")
+        print (len(set(dataset_dict_curr['id'])))
         dataset_dict = util.merge(dataset_dict, dataset_dict_curr, i)
+    print ("finished loading dataset_dict")
     data_encodings = read_and_process(args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
+    print ("finished_read_and_process")
     return util.QADataset(data_encodings, train=(split_name=='train')), dataset_dict
