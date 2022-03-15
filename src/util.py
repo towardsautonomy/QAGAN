@@ -244,15 +244,6 @@ def downsample_dataset_dir(data_dict, sample_fraction, orignal_ids=set()):
             new_data_dict['context'].append(data_dict['context'][i])
             new_data_dict['id'].append(data_dict['id'][i])
             new_data_dict['answer'].append(data_dict['answer'][i])
-        elif data_dict['context_perplexity'][i] is None and data_dict['question_perplexity'][i] is None:
-            print ("old data?")
-            print("============================================")
-            print("Question: ", data_dict['question'][i])
-            print("Context: ", data_dict['context'][i])
-            print("Answer: ", data_dict['answer'][i])
-            print("Context Perplexity: ", data_dict['context_perplexity'][i])
-            print("Question Perplexity: ", data_dict['question_perplexity'][i])
-            print("============================================")
         elif random.random() < sample_fraction:
 
             percentage = 100
@@ -265,13 +256,6 @@ def downsample_dataset_dir(data_dict, sample_fraction, orignal_ids=set()):
                 perplexity = data_dict['question_perplexity'][i]['translated_text']
 
             if percentage > 2 and perplexity > 400:
-                print("============================================")
-                print("Question: ", data_dict['question'][i])
-                print("Context: ", data_dict['context'][i])
-                print("Answer: ", data_dict['answer'][i])
-                print("Context Perplexity: ", data_dict['context_perplexity'][i])
-                print("Question Perplexity: ", data_dict['question_perplexity'][i])
-                print("============================================")
                 continue
 
             new_data_dict['question'].append(data_dict['question'][i])
@@ -565,8 +549,3 @@ def compute_f1(a_gold, a_pred):
     recall = 1.0 * num_same / len(gold_toks)
     f1 = (2 * precision * recall) / (precision + recall)
     return f1
-
-if __name__ == "__main__":
-    read_data = read_squad("/home/kaiyuewang/QAGAN/datasets/indomain_train/duorc_augmented")
-    another_data = read_squad("/home/kaiyuewang/QAGAN/datasets/indomain_train/duorc")
-    print ("here")

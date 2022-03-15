@@ -13,7 +13,7 @@ from metric import calculate_perplexity, get_perplexity_data
 
 def custom_back_translate(texts, target_language='de', use_fast_metric=False):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print (f"Back Trnaslation Using: {device}")
+    # print (f"Back Trnaslation Using: {device}")
     target_model_name = 'Helsinki-NLP/opus-mt-en-de'
     target_tokenizer = MarianTokenizer.from_pretrained(target_model_name)
     target_model = MarianMTModel.from_pretrained(target_model_name).to(device)
@@ -51,7 +51,7 @@ def custom_back_translate(texts, target_language='de', use_fast_metric=False):
     perplexity = []
     perpleixty_true_text = []
     perpleixty_translated_text = []
-    print ("length of current batch: ", map(len, texts))
+    # print ("length of current batch: ", map(len, texts))
     for start in tqdm(range(0, len(texts), batch_size)):
         translated = back_translate(texts[start: start+batch_size], source_lang="en", target_lang=target_language)
         result.extend(translated)
@@ -93,7 +93,6 @@ def get_new_data(context, question, answer):
     for answer_text in answer["text"]:
         r = re.search(r'\b%s\b' % answer_text.lower(), context.lower())
         if not r:
-            print (context)
             raise ValueError("answer text: {} can't be found in context".format(answer_text))
         new_answer["answer_start"].append(r.start())
         new_answer["text"].append(answer_text.lower())
@@ -116,10 +115,10 @@ def filter_valid_augmentated_data(original_dataset, augmented_context_list, augm
         # Output the augment context
         try:
             new_context, new_question, new_answer, new_id = get_new_data(augmented_context_list[i], question, answer)
-            print("========================================================")
-            print(f"Original context: {context}")
-            print(f"Translated context: {new_context}")
-            print(f"Perplexity: {context_perplexity[i]}")
+            # print("========================================================")
+            # print(f"Original context: {context}")
+            # print(f"Translated context: {new_context}")
+            # print(f"Perplexity: {context_perplexity[i]}")
 
 
             yield new_context, new_question, new_answer, new_id, context_perplexity[i], None
@@ -129,10 +128,10 @@ def filter_valid_augmentated_data(original_dataset, augmented_context_list, augm
         # Output augmented question
         try:
             new_context, new_question, new_answer, new_id = get_new_data(context, augmented_question_list[i], answer)
-            print("========================================================")
-            print(f"Original question: {question}")
-            print(f"Translated question: {new_question}")
-            print(f"Perplexity: {question_perplexity[i]}")
+            # print("========================================================")
+            # print(f"Original question: {question}")
+            # print(f"Translated question: {new_question}")
+            # print(f"Perplexity: {question_perplexity[i]}")
 
             yield new_context, new_question, new_answer, new_id, None, question_perplexity[i]
 
