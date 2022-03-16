@@ -21,3 +21,8 @@
 ## Quantitative Evaluation
 
 ![](media/quantitative_evaluation.png)
+
+## Data Augmentation:
+```
+python src/data_augmentation.py --domain="indomain_train" --datasets=duorc,nat_questions,newsqa,race,relation_extraction,squad --fast_metric=True
+```
