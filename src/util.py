@@ -301,8 +301,13 @@ def read_squad(path):
         data_dict_collapsed['question'].append(data_dict['question'][ex_ids[0]])
         data_dict_collapsed['context'].append(data_dict['context'][ex_ids[0]])
         data_dict_collapsed['id'].append(qid)
-        data_dict_collapsed['context_perplexity'].append(data_dict['context_perplexity'][ex_ids[0]])
-        data_dict_collapsed['question_perplexity'].append(data_dict['question_perplexity'][ex_ids[0]])
+        try:
+            data_dict_collapsed['context_perplexity'].append(data_dict['context_perplexity'][ex_ids[0]])
+            data_dict_collapsed['question_perplexity'].append(data_dict['question_perplexity'][ex_ids[0]])
+        except Exception as e:
+            data_dict_collapsed['context_perplexity'].append(None)
+            data_dict_collapsed['question_perplexity'].append(None)
+
         if data_dict['answer']:
             all_answers = [data_dict['answer'][idx] for idx in ex_ids]
             data_dict_collapsed['answer'].append({'answer_start': [answer['answer_start'] for answer in all_answers],
