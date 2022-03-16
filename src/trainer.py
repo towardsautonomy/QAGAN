@@ -5,7 +5,7 @@ import os
 from collections import OrderedDict
 import torch
 import csv
-from src import util
+import src.util as util
 from transformers import AdamW
 from tensorboardX import SummaryWriter
 from textattack.augmentation import EmbeddingAugmenter
@@ -121,7 +121,6 @@ def prepare_train_data(dataset_dict, tokenizer):
             offset_en = offsets[tokenized_examples['end_positions'][-1]][1]
             if context[offset_st : offset_en] != answer['text'][0] and \
                     context[offset_st : offset_en].lower() != answer['text'][0].lower():
-                print (context[offset_st : offset_en], answer['text'][0])
                 inaccurate += 1
 
     total = len(tokenized_examples['id'])
@@ -356,8 +355,6 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name, should_decmiate
                 print (e)
                 pass
 
-
-        print (f"pre process: dataset: {dataset} has size: {len(dataset_dict_curr['id'])}")
         if should_decmiate:
             dataset_dict_curr = util.downsample_dataset_dir(dataset_dict_curr, dataset_sample_fraction[dataset], original_dataset_ids)
         import copy
@@ -371,10 +368,6 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name, should_decmiate
                     else:
                         dataset_dict_curr[key].extend(copy.deepcopy(temp_dataset_dict[key]))
 
-        print (f"post process: dataset: {dataset} has size: {len(dataset_dict_curr['id'])}")
-        print (len(set(dataset_dict_curr['id'])))
         dataset_dict = util.merge(dataset_dict, dataset_dict_curr, i)
-    print ("finished loading dataset_dict")
     data_encodings = read_and_process(args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
-    print ("finished_read_and_process")
     return util.QADataset(data_encodings, train=(split_name=='train')), dataset_dict

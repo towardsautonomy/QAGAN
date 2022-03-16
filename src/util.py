@@ -122,7 +122,7 @@ def get_logger(log_dir, name):
 
     # Create logger
     logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
 
     # Log everything (i.e., DEBUG level and above) to a file
     log_path = os.path.join(log_dir, f'{name}.txt')
@@ -144,6 +144,7 @@ def get_logger(log_dir, name):
     # add the handlers to the logger
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
+    logger.propagate = False
 
     return logger
 
@@ -180,7 +181,7 @@ class QADataset(Dataset):
         self.keys = ['input_ids', 'attention_mask', 'labels']
         if train:
             self.keys += ['start_positions', 'end_positions']
-        assert(all(key in self.encodings for key in self.keys), "Expect {} but found: {}".format(self.keys, self.encodings.keys()))
+        assert(all(key in self.encodings for key in self.keys))
 
     def __getitem__(self, idx):
         return {key : torch.tensor(self.encodings[key][idx]) for key in self.keys}

@@ -11,7 +11,6 @@ from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
-
 def main(input_path, output_path, verbose):
     squad_data = {"data": [], "version": "1.1"}
 

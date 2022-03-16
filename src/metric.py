@@ -3,6 +3,7 @@ from textattack.metrics import Perplexity
 from textattack.augmentation.augmenter import AugmentationResult
 import torch
 from torch.nn.functional import cross_entropy
+
 class data:
     def __init__(self, text):
         self.text = text

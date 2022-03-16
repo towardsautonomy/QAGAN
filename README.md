@@ -17,12 +17,9 @@
     - Evaluate the system on test set with `./run_experiments.sh test qagan-finetune default`
 - For submitting to leaderboard, upload the csv file generated in `save/{VARIANT}.{EXPERIMENT_NAME}-01` to the test leaderboard.
 - To run all the experiments, run `sh experiments_launcher.sh`.  
+- To perform data augmentation, run `python src/data_augmentation.py --domain="indomain_train" --datasets=squad,nat_questions,newsqa --fast_metric=True`
 
 ## Quantitative Evaluation
 
-![](media/quantitative_evaluation.png)
-
-## Data Augmentation:
-```
-python src/data_augmentation.py --domain="indomain_train" --datasets=duorc,nat_questions,newsqa,race,relation_extraction,squad --fast_metric=True
-```
+![](media/quantitative_eval_val.png)
+![](media/quantitative_eval_test.png)
