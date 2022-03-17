@@ -9,7 +9,7 @@ import math
 
 class QAGANConfig:
     """ QAGAN configuration """
-    num_datasets=3
+    num_datasets=6
     num_discriminator_layers=3
     dropout=0.1
     disc_true_lambda=0.5

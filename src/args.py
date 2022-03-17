@@ -22,7 +22,7 @@ def get_args():
     parser.add_argument('--finetune', action='store_true')
     parser.add_argument('--load-pretrained', action='store_true', default=False)
     parser.add_argument('--pretrained-model', type=str, default='none')
-    parser.add_argument('--train-datasets', type=str, default='squad,nat_questions,newsqa')
+    parser.add_argument('--train-datasets', type=str, default='HotpotQA,NaturalQuestions,NewsQA,SearchQA,SQuAD,TriviaQA')
     parser.add_argument('--finetune-datasets', type=str, default='duorc,race,relation_extraction')
     parser.add_argument('--run-name', type=str, default='multitask_distilbert')
     parser.add_argument('--recompute-features', action='store_true')
