@@ -201,6 +201,8 @@ class QADatasetGen(Dataset):
         self.dataset_dict = dataset_dict
         self.stride = stride
         self.max_length = max_length
+        # currently only supports training split
+        assert split_name == 'train'
         # remove questions that are too long
         question_idx_too_long = sorted([i for i in range(len(self.dataset_dict['question'])) if len(self.dataset_dict['question'][i]) > self.max_length], reverse=True)
         for idx_to_remove in question_idx_too_long:

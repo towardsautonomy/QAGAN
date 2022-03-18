@@ -320,7 +320,8 @@ class Trainer():
                                     tbx.add_scalar(f'train/{k}', v, global_idx)
 
                     # evaluate
-                    if (global_idx % self.eval_every) == 0:
+                    if ((global_idx % self.eval_every) == 0) and \
+                       (global_idx > 0):
                         self.logger.info(f'Evaluating at step {global_idx}...')
                         preds, curr_score = self.evaluate(self.val_dataloader, self.val_dict, return_preds=True)
                         results_str = ', '.join(f'{k}: {v:05.2f}' for k, v in curr_score.items())

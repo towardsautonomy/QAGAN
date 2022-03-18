@@ -20,10 +20,10 @@ class QAGANConfig:
     discriminate_cls_sep=False
     use_discriminator=False
     sequence_len=384
-    fake_discriminator_warmup_steps=1000
+    fake_discriminator_warmup_steps=10000
     true_discriminator_every_n_steps=1
     fake_discriminator_every_n_steps=2
-    max_steps = 250000
+    max_steps = 2500000
     anneal = True
     prediction_head = 'linear'
     constrain_hidden_repr = False
