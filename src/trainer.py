@@ -127,11 +127,12 @@ def prepare_train_data(dataset_dict, tokenizer):
     print(f"Preprocessing not completely accurate for {inaccurate}/{total} instances")
     return tokenized_examples
 
-def read_and_process(args, tokenizer, dataset_dict, dir_name, dataset_name, split):
+def read_and_process(args, logger, tokenizer, dataset_dict, dir_name, dataset_name, split):
     cache_path = f'{dir_name}/{dataset_name}_encodings.pt'
     if os.path.exists(cache_path) and not args.recompute_features:
         tokenized_examples = util.load_pickle(cache_path)
     else:
+        logger.info('Tokenizing datasets...')
         if split=='train':
             tokenized_examples = prepare_train_data(dataset_dict, tokenizer)
         else:
@@ -147,9 +148,9 @@ class Trainer():
         self.num_epochs = args.num_epochs
         self.device = torch.device(args.device)
         self.eval_every = args.eval_every
-        self.path = os.path.join(args.save_dir, 'checkpoint')
+        self.path = os.path.join(args.output_dir, 'checkpoint')
         self.num_visuals = args.num_visuals
-        self.save_dir = args.save_dir
+        self.output_dir = args.output_dir
         self.logger = logger
         self.no_visualization = args.no_visualization
         self.variant = args.variant
@@ -157,21 +158,24 @@ class Trainer():
             os.makedirs(self.path)
 
         if args.do_train:
+            # self.model = torch.nn.DataParallel(self.model, args.gpu_ids)
+            self.model.to(self.device)
             logger.info(f'Args: {json.dumps(vars(args), indent=4, sort_keys=True)}')
+            logger.info('Using {} for training...'.format(str(len(args.gpu_ids))+' GPU[s]' if 'cuda' in args.device else 'CPU'))
             if args.finetune:
                 logger.info("Preparing Fine-Tuning Training Data...")
-                train_dataset, _ = get_dataset(args, args.finetune_datasets, args.finetune_train_dir, self.tokenizer, 'train')
+                train_dataset, _ = get_dataset(args, logger, args.finetune_datasets, args.finetune_train_dir, self.tokenizer, 'train')
             else:
                 logger.info("Preparing Training Data...")
-                train_dataset, _ = get_dataset(args, args.train_datasets, args.train_dir, self.tokenizer, 'train', args.decimate_dataset, args.upsample_ood)
+                train_dataset, _ = get_dataset(args, logger, args.train_datasets, args.train_dir, self.tokenizer, 'train')
             if args.finetune:
                 logger.info("Preparing Fine-Tuning Validation Data...")
                 self.val_dataset, self.val_dict = \
-                    get_dataset(args, args.finetune_datasets, args.finetune_val_dir, self.tokenizer, 'val')
+                    get_dataset(args, logger, args.finetune_datasets, args.finetune_val_dir, self.tokenizer, 'val')
             else:
                 logger.info("Preparing Validation Data...")
                 self.val_dataset, self.val_dict = \
-                    get_dataset(args, args.train_datasets, args.val_dir, self.tokenizer, 'val')
+                    get_dataset(args, logger, args.train_datasets, args.val_dir, self.tokenizer, 'val')
             self.train_dataloader = DataLoader(train_dataset,
                                     batch_size=args.batch_size,
                                     sampler=RandomSampler(train_dataset))
@@ -180,11 +184,11 @@ class Trainer():
                                     sampler=SequentialSampler(self.val_dataset))
 
         if args.do_eval:
-            args.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
             split_name = 'test' if 'test' in args.eval_dir else 'validation'
-            self.model.to(args.device)
+            # self.model = torch.nn.DataParallel(self.model, args.gpu_ids)
+            self.model.to(self.device)
             self.eval_dataset,self.eval_dict = \
-                get_dataset(args, args.eval_datasets, args.eval_dir, self.tokenizer, split_name)
+                get_dataset(args, logger, args.eval_datasets, args.eval_dir, self.tokenizer, split_name)
             self.eval_dataloader = DataLoader(self.eval_dataset,
                                      batch_size=args.batch_size,
                                      sampler=SequentialSampler(self.eval_dataset))
@@ -246,8 +250,9 @@ class Trainer():
         optim = AdamW(self.model.parameters(), lr=self.lr)
         global_idx = 0
         best_scores = {'F1': -1.0, 'EM': -1.0}
-        tbx = SummaryWriter(self.save_dir)
+        tbx = SummaryWriter(self.output_dir)
 
+        self.logger.info(f'Starting QAGAN training for {self.num_epochs} epochs...')
         for epoch_num in range(self.num_epochs):
             self.logger.info(f'Epoch: {epoch_num}')
             with torch.enable_grad(), tqdm(total=len(self.train_dataloader.dataset)) as progress_bar:
@@ -264,12 +269,19 @@ class Trainer():
                                         'attention_mask': attention_mask,
                                         'start_positions': start_positions,
                                         'end_positions': end_positions}
+                    model_input_dict = {k: v.to(device) for k, v in model_input_dict.items()}
 
                     labels = None
-                    if 'use_discriminator' in self.model.config.__dict__.keys():
-                        labels = batch['labels'].to(device) \
-                                 if self.model.config.__dict__['use_discriminator'] else None
-                        model_input_dict['labels'] = labels
+                    if isinstance(self.model, torch.nn.DataParallel):
+                        if 'use_discriminator' in self.model.module.config.__dict__.keys():
+                            labels = batch['labels'].to(device) \
+                                    if self.model.module.config.__dict__['use_discriminator'] else None
+                            model_input_dict['labels'] = labels
+                    else:
+                        if 'use_discriminator' in self.model.config.__dict__.keys():
+                            labels = batch['labels'].to(device) \
+                                    if self.model.config.__dict__['use_discriminator'] else None
+                            model_input_dict['labels'] = labels
 
                     outputs = self.model(**model_input_dict)
                     loss = outputs[0]
@@ -329,7 +341,12 @@ class Trainer():
                     global_idx += 1
         return best_scores
 
-def get_dataset(args, datasets, data_dir, tokenizer, split_name, should_decmiate=False, num_upsample=1):
+def get_dataset(args, logger, 
+                      datasets, 
+                      data_dir, 
+                      tokenizer, 
+                      split_name, 
+                      ram_caching=False):
     datasets = datasets.split(',')
     dataset_dict = None
     dataset_name=''
@@ -343,6 +360,7 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name, should_decmiate
         "squad_augmented": .3
     }
     for i, dataset in enumerate(datasets):
+        logger.info(f'Processing dataset: {dataset}')
         dataset_name += f'_{dataset}'
         dataset_dict_curr = util.read_squad(f'{data_dir}/{dataset}')
         original_dataset_ids = set()
@@ -355,19 +373,10 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name, should_decmiate
                 print (e)
                 pass
 
-        if should_decmiate:
-            dataset_dict_curr = util.downsample_dataset_dir(dataset_dict_curr, dataset_sample_fraction[dataset], original_dataset_ids)
-        import copy
-        import uuid
-        if dataset in ['duorc', 'race', 'relation_extraction', 'duorc_augmented', 'race_augmented', 'relation_extraction_augmented']:
-            temp_dataset_dict = copy.deepcopy(dataset_dict_curr)
-            for _ in range(num_upsample - 1):
-                for key in dataset_dict_curr:
-                    if key == 'id':
-                        dataset_dict_curr[key].extend([str(uuid.uuid4()) for _ in range(len(temp_dataset_dict[key]))])
-                    else:
-                        dataset_dict_curr[key].extend(copy.deepcopy(temp_dataset_dict[key]))
-
         dataset_dict = util.merge(dataset_dict, dataset_dict_curr, i)
-    data_encodings = read_and_process(args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
-    return util.QADataset(data_encodings, train=(split_name=='train')), dataset_dict
+    if ram_caching or (split_name!='train'):
+        # use caching for validation set or if ram_caching is enabled
+        data_encodings = read_and_process(args, logger, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
+        return util.QADataset(data_encodings, train=(split_name=='train')), dataset_dict
+    else:
+        return util.QADatasetGen(args, logger, tokenizer, dataset_dict, split_name='train'), dataset_dict

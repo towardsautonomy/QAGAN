@@ -52,7 +52,7 @@ elif [ "$MODE" == "evaluate" ]; then
                  --variant ${variant} \
                  --run-name ${experiment} \
                  --sub-file mtl_submission_val.csv \
-                 --save-dir save/${variant}.${experiment}-01 --eval-dir datasets/oodomain_val #--recompute-features
+                 --output-dir output/${variant}.${experiment}-01 --eval-dir datasets/oodomain_val #--recompute-features
 
 elif [ "$MODE" == "test" ]; then
 	# evaluate
@@ -60,7 +60,7 @@ elif [ "$MODE" == "test" ]; then
                   --variant ${variant} \
                   --run-name ${experiment} \
                   --sub-file mtl_submission.csv \
-                  --save-dir save/${variant}.${experiment}-01
+                  --output-dir output/${variant}.${experiment}-01
 else
     # print error
     echo -e "${red} Invalid mode"

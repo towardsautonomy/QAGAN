@@ -10,5 +10,5 @@ datasets/
 !datasets/*.py
 
 # checkpoints and logs
-save/
+output/
 .idea/

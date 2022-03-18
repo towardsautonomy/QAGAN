@@ -60,15 +60,15 @@ def visualize(tbx, pred_dict, gold_dict, step, split, num_visuals):
                      global_step=step)
 
 
-def get_save_dir(base_dir, variant, name, id_max=100):
+def get_output_dir(base_dir, variant, name, id_max=100):
     for uid in range(1, id_max):
-        save_dir = os.path.join(base_dir, f'{variant}.{name}-{uid:02d}')
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-            return save_dir
+        output_dir = os.path.join(base_dir, f'{variant}.{name}-{uid:02d}')
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            return output_dir
 
-    raise RuntimeError('Too many save directories created with the same name. \
-                       Delete old save directories or use another name.')
+    raise RuntimeError('Too many output directories created with the same name. \
+                       Delete old output directories or use another name.')
 
 
 def filter_encodings(encodings):
@@ -189,6 +189,109 @@ class QADataset(Dataset):
     def __len__(self):
         return len(self.encodings['input_ids'])
 
+class QADatasetGen(Dataset):
+    def __init__(self, args, 
+                       logger, 
+                       tokenizer, 
+                       dataset_dict, 
+                       stride=129,
+                       max_length=384,
+                       split_name='train'):
+        self.tokenizer = tokenizer
+        self.dataset_dict = dataset_dict
+        self.stride = stride
+        self.max_length = max_length
+        # remove questions that are too long
+        question_idx_too_long = sorted([i for i in range(len(self.dataset_dict['question'])) if len(self.dataset_dict['question'][i]) > self.max_length], reverse=True)
+        for idx_to_remove in question_idx_too_long:
+            for key in self.dataset_dict:
+                self.dataset_dict[key].pop(idx_to_remove)
+
+        self.keys = ['input_ids', 'attention_mask', 'labels']
+        if split_name == 'train':
+            self.keys += ['start_positions', 'end_positions']
+
+    def __getitem__(self, idx):
+        tokenized_examples = self.tokenizer(
+                                        self.dataset_dict['question'][idx],
+                                        self.dataset_dict['context'][idx],
+                                        truncation="only_second",
+                                        stride=self.stride,
+                                        max_length=self.max_length,
+                                        return_overflowing_tokens=True,
+                                        return_offsets_mapping=True,
+                                        padding='max_length'
+                                    )
+
+        sample_mapping = tokenized_examples["overflow_to_sample_mapping"]
+        offset_mapping = tokenized_examples["offset_mapping"]
+
+        # Let's label those examples!
+        tokenized_examples["start_positions"] = []
+        tokenized_examples["end_positions"] = []
+        tokenized_examples["id"] = []
+        tokenized_examples["labels"] = []
+        inaccurate = 0
+        for i, offsets in enumerate(offset_mapping):
+            # We will label impossible answers with the index of the CLS token.
+            input_ids = tokenized_examples["input_ids"][i]
+            cls_index = input_ids.index(self.tokenizer.cls_token_id)
+
+            # Grab the sequence corresponding to that example (to know what is the context and what is the question).
+            sequence_ids = tokenized_examples.sequence_ids(i)
+
+            # One example can give several spans, this is the index of the example containing this span of text.
+            sample_index = sample_mapping[i]
+            answer = self.dataset_dict['answer'][sample_index]
+            # Start/end character index of the answer in the text.
+            start_char = answer['answer_start'][0]
+            end_char = start_char + len(answer['text'][0])
+            tokenized_examples['id'].append(self.dataset_dict['id'][sample_index])
+            # Start token index of the current span in the text.
+            token_start_index = 0
+            while sequence_ids[token_start_index] != 1:
+                token_start_index += 1
+
+            # label corresponding to the dataset class
+            tokenized_examples["labels"].append(self.dataset_dict['labels'][sample_index])
+
+            # End token index of the current span in the text.
+            token_end_index = len(input_ids) - 1
+            while sequence_ids[token_end_index] != 1:
+                token_end_index -= 1
+
+            # Detect if the answer is out of the span (in which case this feature is labeled with the CLS index).
+            if not (offsets[token_start_index][0] <= start_char and offsets[token_end_index][1] >= end_char):
+                tokenized_examples["start_positions"].append(cls_index)
+                tokenized_examples["end_positions"].append(cls_index)
+            else:
+                # Otherwise move the token_start_index and token_end_index to the two ends of the answer.
+                # Note: we could go after the last offset if the answer is the last word (edge case).
+                while token_start_index < len(offsets) and offsets[token_start_index][0] <= start_char:
+                    token_start_index += 1
+                while offsets[token_end_index][1] >= end_char:
+                    token_end_index -= 1
+
+                tokenized_examples["end_positions"].append(token_end_index + 1)
+                tokenized_examples["start_positions"].append(token_start_index - 1)
+
+                # assertion to check if this checks out
+                context = self.dataset_dict['context'][sample_index]
+                offset_st = offsets[tokenized_examples['start_positions'][-1]][0]
+                offset_en = offsets[tokenized_examples['end_positions'][-1]][1]
+                if context[offset_st : offset_en] != answer['text'][0] and \
+                        context[offset_st : offset_en].lower() != answer['text'][0].lower():
+                    inaccurate += 1
+
+        assert(all(key in tokenized_examples for key in self.keys))
+        # choose one randomly
+        return {key : torch.tensor(tokenized_examples[key][
+                            random.choice(range(len(tokenized_examples[key])))
+                        ]) for key in self.keys}
+
+    def __len__(self):
+        return len(self.dataset_dict['id'])
+
 def write_squad(path, data_dict):
     """
     Write data dict into squad_augmented data.
@@ -267,6 +370,7 @@ def downsample_dataset_dir(data_dict, sample_fraction, orignal_ids=set()):
 
 
 def read_squad(path):
+    logging.info('Processing: {}'.format(path))
     path = Path(path)
     with open(path, 'rb') as f:
         squad_dict = json.load(f)
