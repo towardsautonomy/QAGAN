@@ -120,6 +120,30 @@ def get_logger(log_dir, name):
             except:
                 self.handleError(record)
 
+    class CustomFormatter(logging.Formatter):
+        """ Custom format for the logger
+        """
+
+        grey = "\x1b[38;20m"
+        yellow = "\x1b[33;20m"
+        red = "\x1b[31;20m"
+        bold_red = "\x1b[31;1m"
+        reset = "\x1b[0m"
+        format = "[%(asctime)s][%(levelname)s] %(message)s"
+
+        FORMATS = {
+            logging.DEBUG: grey + format + reset,
+            logging.INFO: grey + format + reset,
+            logging.WARNING: yellow + format + reset,
+            logging.ERROR: red + format + reset,
+            logging.CRITICAL: bold_red + format + reset
+        }
+
+        def format(self, record):
+            log_fmt = self.FORMATS.get(record.levelno)
+            formatter = logging.Formatter(log_fmt, datefmt='%m.%d.%y %H:%M:%S')
+            return formatter.format(record)
+
     # Create logger
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
@@ -134,12 +158,10 @@ def get_logger(log_dir, name):
     console_handler.setLevel(logging.INFO)
 
     # Create format for the logs
-    file_formatter = logging.Formatter('[%(asctime)s] %(message)s',
+    file_formatter = logging.Formatter('[%(asctime)s][%(levelname)s] %(message)s',
                                        datefmt='%m.%d.%y %H:%M:%S')
     file_handler.setFormatter(file_formatter)
-    console_formatter = logging.Formatter('[%(asctime)s] %(message)s',
-                                          datefmt='%m.%d.%y %H:%M:%S')
-    console_handler.setFormatter(console_formatter)
+    console_handler.setFormatter(CustomFormatter())
 
     # add the handlers to the logger
     logger.addHandler(file_handler)
@@ -201,8 +223,7 @@ class QADatasetGen(Dataset):
         self.dataset_dict = dataset_dict
         self.stride = stride
         self.max_length = max_length
-        # currently only supports training split
-        assert split_name == 'train'
+        self.split_name = split_name
         # remove questions that are too long
         question_idx_too_long = sorted([i for i in range(len(self.dataset_dict['question'])) if len(self.dataset_dict['question'][i]) > self.max_length], reverse=True)
         for idx_to_remove in question_idx_too_long:
@@ -214,9 +235,12 @@ class QADatasetGen(Dataset):
             self.keys += ['start_positions', 'end_positions']
 
     def __getitem__(self, idx):
+        # build dataset dictionary for a specific index
+        dataset_dict_ = {key : [self.dataset_dict[key][idx]] for key in self.dataset_dict.keys()}
+        
         tokenized_examples = self.tokenizer(
-                                        self.dataset_dict['question'][idx],
-                                        self.dataset_dict['context'][idx],
+                                        dataset_dict_['question'],
+                                        dataset_dict_['context'],
                                         truncation="only_second",
                                         stride=self.stride,
                                         max_length=self.max_length,
@@ -229,61 +253,80 @@ class QADatasetGen(Dataset):
         offset_mapping = tokenized_examples["offset_mapping"]
 
         # Let's label those examples!
-        tokenized_examples["start_positions"] = []
-        tokenized_examples["end_positions"] = []
         tokenized_examples["id"] = []
         tokenized_examples["labels"] = []
-        inaccurate = 0
-        for i, offsets in enumerate(offset_mapping):
-            # We will label impossible answers with the index of the CLS token.
-            input_ids = tokenized_examples["input_ids"][i]
-            cls_index = input_ids.index(self.tokenizer.cls_token_id)
 
-            # Grab the sequence corresponding to that example (to know what is the context and what is the question).
-            sequence_ids = tokenized_examples.sequence_ids(i)
+        # train set
+        if self.split_name == 'train':
+            tokenized_examples["start_positions"] = []
+            tokenized_examples["end_positions"] = []
+            inaccurate = 0
+            for i, offsets in enumerate(offset_mapping):
+                # We will label impossible answers with the index of the CLS token.
+                input_ids = tokenized_examples["input_ids"][i]
+                cls_index = input_ids.index(self.tokenizer.cls_token_id)
 
-            # One example can give several spans, this is the index of the example containing this span of text.
-            sample_index = sample_mapping[i]
-            answer = self.dataset_dict['answer'][sample_index]
-            # Start/end character index of the answer in the text.
-            start_char = answer['answer_start'][0]
-            end_char = start_char + len(answer['text'][0])
-            tokenized_examples['id'].append(self.dataset_dict['id'][sample_index])
-            # Start token index of the current span in the text.
-            token_start_index = 0
-            while sequence_ids[token_start_index] != 1:
-                token_start_index += 1
+                # Grab the sequence corresponding to that example (to know what is the context and what is the question).
+                sequence_ids = tokenized_examples.sequence_ids(i)
 
-            # label corresponding to the dataset class
-            tokenized_examples["labels"].append(self.dataset_dict['labels'][sample_index])
-
-            # End token index of the current span in the text.
-            token_end_index = len(input_ids) - 1
-            while sequence_ids[token_end_index] != 1:
-                token_end_index -= 1
-
-            # Detect if the answer is out of the span (in which case this feature is labeled with the CLS index).
-            if not (offsets[token_start_index][0] <= start_char and offsets[token_end_index][1] >= end_char):
-                tokenized_examples["start_positions"].append(cls_index)
-                tokenized_examples["end_positions"].append(cls_index)
-            else:
-                # Otherwise move the token_start_index and token_end_index to the two ends of the answer.
-                # Note: we could go after the last offset if the answer is the last word (edge case).
-                while token_start_index < len(offsets) and offsets[token_start_index][0] <= start_char:
+                # One example can give several spans, this is the index of the example containing this span of text.
+                sample_index = sample_mapping[i]
+                answer = dataset_dict_['answer'][sample_index]
+                # Start/end character index of the answer in the text.
+                start_char = answer['answer_start'][0]
+                end_char = start_char + len(answer['text'][0])
+                tokenized_examples['id'].append(dataset_dict_['id'][sample_index])
+                # Start token index of the current span in the text.
+                token_start_index = 0
+                while sequence_ids[token_start_index] != 1:
                     token_start_index += 1
-                while offsets[token_end_index][1] >= end_char:
+
+                # label corresponding to the dataset class
+                tokenized_examples["labels"].append(dataset_dict_['labels'][sample_index])
+
+                # End token index of the current span in the text.
+                token_end_index = len(input_ids) - 1
+                while sequence_ids[token_end_index] != 1:
                     token_end_index -= 1
 
-                tokenized_examples["end_positions"].append(token_end_index + 1)
-                tokenized_examples["start_positions"].append(token_start_index - 1)
+                # Detect if the answer is out of the span (in which case this feature is labeled with the CLS index).
+                if not (offsets[token_start_index][0] <= start_char and offsets[token_end_index][1] >= end_char):
+                    tokenized_examples["start_positions"].append(cls_index)
+                    tokenized_examples["end_positions"].append(cls_index)
+                else:
+                    # Otherwise move the token_start_index and token_end_index to the two ends of the answer.
+                    # Note: we could go after the last offset if the answer is the last word (edge case).
+                    while token_start_index < len(offsets) and offsets[token_start_index][0] <= start_char:
+                        token_start_index += 1
+                    while offsets[token_end_index][1] >= end_char:
+                        token_end_index -= 1
 
-                # assertion to check if this checks out
-                context = self.dataset_dict['context'][sample_index]
-                offset_st = offsets[tokenized_examples['start_positions'][-1]][0]
-                offset_en = offsets[tokenized_examples['end_positions'][-1]][1]
-                if context[offset_st : offset_en] != answer['text'][0] and \
-                        context[offset_st : offset_en].lower() != answer['text'][0].lower():
-                    inaccurate += 1
+                    tokenized_examples["end_positions"].append(token_end_index + 1)
+                    tokenized_examples["start_positions"].append(token_start_index - 1)
+
+                    # assertion to check if this checks out
+                    context = dataset_dict_['context'][sample_index]
+                    offset_st = offsets[tokenized_examples['start_positions'][-1]][0]
+                    offset_en = offsets[tokenized_examples['end_positions'][-1]][1]
+                    if context[offset_st : offset_en] != answer['text'][0] and \
+                            context[offset_st : offset_en].lower() != answer['text'][0].lower():
+                        inaccurate += 1
+        else:
+            for i in range(len(tokenized_examples["input_ids"])):
+                # Grab the sequence corresponding to that example (to know what is the context and what is the question).
+                sequence_ids = tokenized_examples.sequence_ids(i)
+                # One example can give several spans, this is the index of the example containing this span of text.
+                sample_index = sample_mapping[i]
+                tokenized_examples["id"].append(dataset_dict_["id"][sample_index])
+                # label corresponding to the dataset class
+                tokenized_examples["labels"].append(dataset_dict_['labels'][sample_index])
+                # Set to None the offset_mapping that are not part of the context so it's easy to determine if a token
+                # position is part of the context or not.
+                tokenized_examples["offset_mapping"][i] = [
+                    (o if sequence_ids[k] == 1 else None)
+                    for k, o in enumerate(tokenized_examples["offset_mapping"][i])
+                ]
+
 
         assert(all(key in tokenized_examples for key in self.keys))
         # choose one randomly

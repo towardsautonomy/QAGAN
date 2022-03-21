@@ -62,46 +62,54 @@ def main():
         if args.variant == 'baseline-cond':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer,
-                                  prediction_head='conditional_linear')
+                                  prediction_head='conditional_linear',
+                                  num_datasets=args.num_datasets)
         elif args.variant == 'baseline-cond-att':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer,
-                                  prediction_head='conditional_attention')
+                                  prediction_head='conditional_attention',
+                                  num_datasets=args.num_datasets)
         elif args.variant == 'qagan':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
                                   use_discriminator=True,
-                                  discriminate_cls=True)
+                                  discriminate_cls=True,
+                                  num_datasets=args.num_datasets)
         elif args.variant == 'qagan-hidden':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
                                   use_discriminator=True,
-                                  discriminate_hidden_layers=True)
+                                  discriminate_hidden_layers=True,
+                                  num_datasets=args.num_datasets)
         elif args.variant == 'qagan-cond':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
                                   use_discriminator=True,
                                   discriminate_cls=True,
-                                  prediction_head='conditional_linear')
+                                  prediction_head='conditional_linear',
+                                  num_datasets=args.num_datasets)
         elif args.variant == 'qagan-cond-kld':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
                                   use_discriminator=True,
                                   discriminate_cls=True,
                                   prediction_head='conditional_linear',
-                                  constrain_hidden_repr=True)
+                                  constrain_hidden_repr=True,
+                                  num_datasets=args.num_datasets)
         elif args.variant == 'qagan-cond-att':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
                                   use_discriminator=True,
                                   discriminate_cls=True,
-                                  prediction_head='conditional_attention')
+                                  prediction_head='conditional_attention',
+                                  num_datasets=args.num_datasets)
         elif args.variant == 'qagan-cond-tfm':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
                                   use_discriminator=True,
                                   discriminate_cls=True,
-                                  prediction_head='conditional_transformers')
+                                  prediction_head='conditional_transformers',
+                                  num_datasets=args.num_datasets)
         else:
             raise ValueError
         # define model

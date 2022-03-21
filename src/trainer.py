@@ -159,6 +159,7 @@ class Trainer():
 
         if args.do_train:
             # self.model = torch.nn.DataParallel(self.model, args.gpu_ids)
+            num_workers = max(4, min(16, args.batch_size))
             self.model.to(self.device)
             logger.info(f'Args: {json.dumps(vars(args), indent=4, sort_keys=True)}')
             logger.info('Using {} for training...'.format(str(len(args.gpu_ids))+' GPU[s]' if 'cuda' in args.device else 'CPU'))
@@ -176,19 +177,22 @@ class Trainer():
                 logger.info("Preparing Validation Data...")
                 self.val_dataset, self.val_dict = \
                     get_dataset(args, logger, args.train_datasets, args.val_dir, self.tokenizer, 'val')
+            logger.info(f"Using {num_workers} workers for dataloader.")
             self.train_dataloader = DataLoader(train_dataset,
                                     batch_size=args.batch_size,
-                                    sampler=RandomSampler(train_dataset))
+                                    sampler=RandomSampler(train_dataset),
+                                    num_workers=num_workers)
             self.val_dataloader = DataLoader(self.val_dataset,
                                     batch_size=args.batch_size,
-                                    sampler=SequentialSampler(self.val_dataset))
+                                    sampler=SequentialSampler(self.val_dataset),
+                                    num_workers=num_workers)
 
         if args.do_eval:
             split_name = 'test' if 'test' in args.eval_dir else 'validation'
             # self.model = torch.nn.DataParallel(self.model, args.gpu_ids)
             self.model.to(self.device)
             self.eval_dataset,self.eval_dict = \
-                get_dataset(args, logger, args.eval_datasets, args.eval_dir, self.tokenizer, split_name)
+                get_dataset(args, logger, args.eval_datasets, args.eval_dir, self.tokenizer, split_name, self.tokenizer, 'train')
             self.eval_dataloader = DataLoader(self.eval_dataset,
                                      batch_size=args.batch_size,
                                      sampler=SequentialSampler(self.eval_dataset))
@@ -214,8 +218,9 @@ class Trainer():
                 batch_size = len(input_ids)
                 # model inputs
                 model_input_dict = {'input_ids': input_ids,
-                                    'attention_mask': attention_mask,
-                                    'labels': labels}
+                                    'attention_mask': attention_mask}
+                if self.variant != 'baseline':
+                    model_input_dict['labels'] = labels
 
                 outputs = self.model(**model_input_dict)
                 # Forward
@@ -346,20 +351,15 @@ def get_dataset(args, logger,
                       datasets, 
                       data_dir, 
                       tokenizer, 
-                      split_name, 
-                      ram_caching=False):
+                      split_name):
     datasets = datasets.split(',')
+
+    if args.num_datasets != len(datasets):
+        logger.warning('Number of datasets does not seem to be correctly set, this may result in an error.')
+
     dataset_dict = None
     dataset_name=''
 
-    dataset_sample_fraction = {
-        "duorc_augmented": 1,
-        "nat_questions_augmented": .3,
-        "newsqa_augmented": .3,
-        "race_augmented": 1,
-        "relation_extraction_augmented": 1,
-        "squad_augmented": .3
-    }
     for i, dataset in enumerate(datasets):
         logger.info(f'Processing dataset: {dataset}')
         dataset_name += f'_{dataset}'
@@ -375,9 +375,9 @@ def get_dataset(args, logger,
                 pass
 
         dataset_dict = util.merge(dataset_dict, dataset_dict_curr, i)
-    if ram_caching or (split_name!='train'):
+    if args.ram_caching:
         # use caching for validation set or if ram_caching is enabled
         data_encodings = read_and_process(args, logger, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
         return util.QADataset(data_encodings, train=(split_name=='train')), dataset_dict
     else:
-        return util.QADatasetGen(args, logger, tokenizer, dataset_dict, split_name='train'), dataset_dict
+        return util.QADatasetGen(args, logger, tokenizer, dataset_dict, split_name=split_name), dataset_dict

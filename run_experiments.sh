@@ -37,7 +37,7 @@ if [ "$MODE" == "train" ]; then
     # train
     python run.py --do-train \
                   --variant ${variant} \
-                  --eval-every 5000 --run-name ${experiment} #--recompute-features
+                  --eval-every 2000 --run-name ${experiment} #--recompute-features
 
 elif [ "$MODE" == "finetune" ]; then
     # train
