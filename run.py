@@ -47,17 +47,31 @@ def main():
     # set random seed
     util.set_seed(args.seed)
 
+    # define which model to use
+    if args.base_model == 'bert':
+        tokenizer_model = BertTokenizerFast
+        default_model = BertForQuestionAnswering
+        backbone_model = BertModel
+        backbone_config = BertConfig
+    elif args.base_model == 'distil-bert':
+        tokenizer_model = DistilBertTokenizerFast
+        default_model = DistilBertForQuestionAnswering
+        backbone_model = DistilBertModel
+        backbone_config = DistilBertConfig
+    else:
+        raise Exception(f'{args.base_model} is not supported')
+
     # load pre-trained base model
     model, tokenizer = None, None
     if args.variant == 'baseline':
-        tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
-        model = BertForQuestionAnswering.from_pretrained("bert-base-uncased")
+        tokenizer = tokenizer_model.from_pretrained(args.base_model_id)
+        model = default_model.from_pretrained(args.base_model_id)
     else:
-        config = BertConfig()
+        config = backbone_config()
         config.output_hidden_states = False
         config.output_attentions = False
-        tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
-        backbone = BertModel.from_pretrained("bert-base-uncased", config=config)
+        tokenizer = tokenizer_model.from_pretrained(args.base_model_id)
+        backbone = backbone_model.from_pretrained(args.base_model_id, config=config)
 
         if args.variant == 'baseline-cond':
             qconfig = QAGANConfig(backbone=backbone, 
@@ -125,17 +139,20 @@ def main():
             qconfig['fake_discriminator_warmup_steps'] = 0
             model = QAGAN(config=qconfig).from_pretrained(args.pretrained_model)
         else:
-            model = BertForQuestionAnswering.from_pretrained(args.pretrained_model)
+            model = default_model.from_pretrained(args.pretrained_model)
             
     # mode of operation
     if args.do_train:
         if not os.path.exists(args.output_dir):
             os.makedirs(args.output_dir)
-        args.output_dir = util.get_output_dir(args.output_dir, args.variant, args.run_name)
+        args.output_dir = util.get_output_dir(args.output_dir, 
+                                              args.variant, 
+                                              args.base_model, 
+                                              args.run_name)
         logger = util.get_logger(args.output_dir, 'log_train')
     elif args.do_eval:
         split_name = 'test' if 'test' in args.eval_dir else 'validation'
-        logger = util.get_logger(args.output_dir, f'log_{split_name}')
+        logger = util.get_logger(args.output_dir, f'log_{split_name}_{args.eval_datasets}')
 
     if args.do_train:
         # define trainer
@@ -146,7 +163,7 @@ def main():
         # load pretrained model
         checkpoint_path = os.path.join(args.output_dir, 'checkpoint')
         if args.variant == 'baseline':
-            model = BertForQuestionAnswering.from_pretrained(checkpoint_path)
+            model = default_model.from_pretrained(checkpoint_path)
         else:
             model = QAGAN(config=qconfig).from_pretrained(checkpoint_path)
         # define trainer

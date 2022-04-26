@@ -191,8 +191,9 @@ class Trainer():
             split_name = 'test' if 'test' in args.eval_dir else 'validation'
             # self.model = torch.nn.DataParallel(self.model, args.gpu_ids)
             self.model.to(self.device)
+            logger.info(f'Args: {json.dumps(vars(args), indent=4, sort_keys=True)}')
             self.eval_dataset,self.eval_dict = \
-                get_dataset(args, logger, args.eval_datasets, args.eval_dir, self.tokenizer, split_name, self.tokenizer, 'train')
+                get_dataset(args, logger, args.eval_datasets, args.eval_dir, self.tokenizer, split_name)
             self.eval_dataloader = DataLoader(self.eval_dataset,
                                      batch_size=args.batch_size,
                                      sampler=SequentialSampler(self.eval_dataset))
@@ -375,7 +376,7 @@ def get_dataset(args, logger,
                 pass
 
         dataset_dict = util.merge(dataset_dict, dataset_dict_curr, i)
-    if args.ram_caching:
+    if args.ram_caching or (split_name!='train'):
         # use caching for validation set or if ram_caching is enabled
         data_encodings = read_and_process(args, logger, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
         return util.QADataset(data_encodings, train=(split_name=='train')), dataset_dict

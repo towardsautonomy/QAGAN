@@ -60,9 +60,9 @@ def visualize(tbx, pred_dict, gold_dict, step, split, num_visuals):
                      global_step=step)
 
 
-def get_output_dir(base_dir, variant, name, id_max=100):
+def get_output_dir(base_dir, variant, base_model, name, id_max=100):
     for uid in range(1, id_max):
-        output_dir = os.path.join(base_dir, f'{variant}.{name}-{uid:02d}')
+        output_dir = os.path.join(base_dir, f'{variant}.{base_model}.{name}-{uid:02d}')
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
             return output_dir
@@ -657,8 +657,6 @@ def postprocess_qa_predictions(examples, features, predictions,
         all_predictions[example["id"]] = best_non_null_pred["text"]
 
     return all_predictions
-
-
 
 # All methods below this line are from the official SQuAD 2.0 eval script
 # https://worksheets.codalab.org/rest/bundles/0x6b567e1cf2e041ec80d7098f031c5c9e/contents/blob/

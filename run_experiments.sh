@@ -9,27 +9,28 @@ reset=\\033[0m
 # function to print usage
 print_usage() {
     echo -e "Usage: $0 train {variant} {experiment_name}"
-    echo -e "       $0 finetune {variant} {experiment_name} {pretrained_ckpt_pathn"
-    echo -e "       $0 evaluate {variant} {experiment_name}"
-    echo -e "       $0 evaluate {test} {experiment_name}${reset}"
+    echo -e "       $0 finetune {variant} {experiment_name} {base_model} {pretrained_ckpt_path}"
+    echo -e "       $0 evaluate {variant} {experiment_name} {base_model} {dataset}"
+    echo -e "       $0 test {variant} {experiment_name} {base_model} {dataset}${reset}"
 }
 
 # experiment mode
 MODE=$1
 variant=$2
 experiment=$3
-if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
+base_model=$4
+if [ "$#" -lt 3 ] || [ "$#" -gt 5 ]; then
     echo -e "${red}Incorrect arguments."
     print_usage
     exit 1
-elif [ "$#" -eq 4 ]; then
-    if [ "$MODE" != "finetune" ]; then
-        echo ${MODE}
-        echo -e "${red}Pretrained model should only be used during finetuning."
-        print_usage
-        exit 1
+elif [ "$#" -eq 5 ]; then
+    if [ "$MODE" = "finetune" ]; then
+        pretrained_ckpt=$5
+    else
+        dataset=$5
     fi
-    pretrained_ckpt=$4
+    
+    
 fi
 
 ## run experiments
@@ -43,7 +44,10 @@ elif [ "$MODE" == "finetune" ]; then
     # train
     python run.py --do-train \
                   --variant ${variant} \
-                  --eval-every 10 --num-epochs 10 --run-name ${experiment} \
+                  --eval-every 10 \
+                  --num-epochs 10 \
+                  --run-name ${experiment} \
+                  --base-model=${base_model} \
                   --finetune --pretrained-model=${pretrained_ckpt} #--recompute-features
 
 elif [ "$MODE" == "evaluate" ]; then
@@ -52,7 +56,10 @@ elif [ "$MODE" == "evaluate" ]; then
                  --variant ${variant} \
                  --run-name ${experiment} \
                  --sub-file mtl_submission_val.csv \
-                 --output-dir output/${variant}.${experiment}-01 --eval-dir datasets/oodomain_val #--recompute-features
+                 --output-dir output/${variant}.${base_model}.${experiment}-01 \
+                 --eval-dir datasets/oodomain_val \
+                 --base-model=${base_model} \
+                 --eval-datasets=${dataset} #--recompute-features
 
 elif [ "$MODE" == "test" ]; then
 	# evaluate
@@ -60,7 +67,9 @@ elif [ "$MODE" == "test" ]; then
                   --variant ${variant} \
                   --run-name ${experiment} \
                   --sub-file mtl_submission.csv \
-                  --output-dir output/${variant}.${experiment}-01
+                  --base-model=${base_model} \
+                  --output-dir output/${variant}.${base_model}.${experiment}-01 \
+                  --eval-datasets=${dataset}
 else
     # print error
     echo -e "${red} Invalid mode"
