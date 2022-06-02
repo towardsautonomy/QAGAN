@@ -1,8 +1,33 @@
 # QAGAN: Adversarial Approach To Learning Domain Invariant Language Features
 
 ## Getting Started
-- Download datasets from [here](https://drive.google.com/file/d/1Fv2d30hY-2niU7t61ktnMsi_HUXS6-Qx/view?usp=sharing)
-- Setup environment with `cd environment && conda env create -f conda_env.yml`
+
+### Datasets
+
+- Download datasets: `cd datasets && sh download_data.sh`  
+- Convert the dataset into SQuAD format: 
+    - `in-domain train` dataset: 
+        ```/bin/sh
+        python datasets/process_data.py --input-path=datasets/indomain_train_mrqa --output-path=datasets/indomain_train
+        ```    
+    - `in-domain validation` dataset: 
+        ```/bin/sh
+        python datasets/process_data.py --input-path=datasets/indomain_val_mrqa --output-path=datasets/indomain_val
+        ```    
+    - `out-of-domain validation` dataset: 
+        ```/bin/sh
+        python datasets/process_data.py --input-path=datasets/oodomain_val_mrqa --output-path=datasets/oodomain_val
+        ```   
+
+### Setup, Training, and Validation
+- Setup environment:
+  ```/bin/sh
+  cd environment && conda env create -f conda_env.yml
+  conda activate qagan
+  python -m ipykernel install --user --name qagan --display-name "qagan"
+  cd ..
+  ```
+
 - Usage: 
     ```/bin/sh
     Usage: ./run_experiments.sh train {variant} {experiment_name}
@@ -17,9 +42,4 @@
     - Evaluate the system on test set with `./run_experiments.sh test qagan-finetune default`
 - For submitting to leaderboard, upload the csv file generated in `save/{VARIANT}.{EXPERIMENT_NAME}-01` to the test leaderboard.
 - To run all the experiments, run `sh experiments_launcher.sh`.  
-- To perform data augmentation, run `python src/data_augmentation.py --domain="indomain_train" --datasets=squad,nat_questions,newsqa --fast_metric=True`
-
-## Quantitative Evaluation
-
-![](media/quantitative_eval_val.png)
-![](media/quantitative_eval_test.png)
+- To perform data augmentation, run `python src/data_augmentation.py --domain="indomain_train" --datasets=HotpotQA,NaturalQuestions,NewsQA,SearchQA,SQuAD,TriviaQA --fast_metric=True`

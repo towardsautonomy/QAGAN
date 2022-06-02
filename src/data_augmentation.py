@@ -1,4 +1,4 @@
-from src import util
+import util
 import uuid
 import os
 import re
@@ -100,8 +100,6 @@ def get_new_data(context, question, answer):
     # generate a random uuid. it's not safe as there might be collision but probably ok.
     return (context, question, new_answer, str(uuid.uuid4()))
 
-
-
 def filter_valid_augmentated_data(original_dataset, augmented_context_list, augmented_question_list, context_perplexity, question_perplexity):
     total_record_sz = len(original_dataset["id"])
     assert (len(augmented_context_list) == len(original_dataset["context"]))
@@ -169,6 +167,5 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     for dataset in args.datasets.split(','):
-        print (os.path.join(os.path.dirname(__file__), "..", "datasets", args.domain, dataset))
         data_set_to_augment(os.path.join(os.path.dirname(__file__), "..", "datasets", args.domain, dataset), args.fast_metric)
 

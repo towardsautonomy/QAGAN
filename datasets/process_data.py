@@ -5,6 +5,7 @@ import os
 import re
 import gzip
 import string
+import glob
 
 from fuzzywuzzy import fuzz
 from tqdm import tqdm
@@ -17,40 +18,49 @@ def main(input_path, output_path, verbose):
     logger.info(f"Loading data from {input_path}")
     num_questions = 0.0
 
-    if os.path.isfile(input_path):
-        squad_data["data"].extend(read_file(input_path, verbose))
+    assert os.path.isdir(input_path) 
+    # make output directory if it doesn't exist
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
 
-    # Count number of questions
-    for example in squad_data["data"]:
-        for paragraph in example["paragraphs"]:
-            for question_answer in paragraph["qas"]:
-                num_questions += 1
+    for filename in glob.glob(input_path + '/*.gz'):
+        if not filename.endswith(".jsonl.gz"):
+            continue
 
-    # Verify the data
-    assert "data" in squad_data.keys()
-    assert "version" in squad_data.keys()
-    for article in squad_data["data"]:
-        for paragraph in article["paragraphs"]:
-            context = paragraph["context"]
-            for qas in paragraph["qas"]:
-                assert qas["question"]
-                for answer in qas["answers"]:
-                    assert (
-                        answer["text"]
-                        == context[
-                            answer["answer_start"] : answer["answer_start"] + len(answer["text"])
-                        ]
-                    )
+        if os.path.isfile(filename):
+            squad_data["data"].extend(read_file(filename, verbose))
 
-    logger.info(f"Writing output to {output_path}")
-    logger.info(f"Number of questions: {num_questions}")
-    with open(output_path, "w") as output_file:
-        json.dump(squad_data, output_file)
+        # Count number of questions
+        for example in squad_data["data"]:
+            for paragraph in example["paragraphs"]:
+                for question_answer in paragraph["qas"]:
+                    num_questions += 1
 
+        # Verify the data
+        assert "data" in squad_data.keys()
+        assert "version" in squad_data.keys()
+        for article in squad_data["data"]:
+            for paragraph in article["paragraphs"]:
+                context = paragraph["context"]
+                for qas in paragraph["qas"]:
+                    assert qas["question"]
+                    for answer in qas["answers"]:
+                        assert (
+                            answer["text"]
+                            == context[
+                                answer["answer_start"] : answer["answer_start"] + len(answer["text"])
+                            ]
+                        )
 
-def read_file(input_path, verbose):
+        logger.info(f"Writing output to {output_path}")
+        logger.info(f"Number of questions: {num_questions}")
+        output_filename = os.path.join(output_path, filename.split("/")[-1].split(".")[0])
+        with open(output_filename, "w") as output_file:
+            json.dump(squad_data, output_file)
+
+def read_file(filename, verbose):
     instances = []
-    with gzip.open(input_path,'rb') as input_file:
+    with gzip.open(filename,'rb') as input_file:
         for line in tqdm(input_file, leave=False):
             mrqa_instance = json.loads(line)
             if "header" in mrqa_instance:
@@ -259,7 +269,7 @@ if __name__ == "__main__":
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        "--input-path", type=str, required=True, help=("Path to MRQA-format data to convert.")
+        "--input-path", type=str, required=True, help=("Path to MRQA-format data directory to convert.")
     )
     parser.add_argument(
         "--output-path",

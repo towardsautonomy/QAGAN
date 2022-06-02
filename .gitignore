@@ -4,8 +4,11 @@ __pycache__
 
 # datasets
 *.tar.gz
+*.json1.gz
 datasets/
+!datasets/*.sh
+!datasets/*.py
 
 # checkpoints and logs
-save/
+output/
 .idea/

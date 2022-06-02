@@ -4,77 +4,126 @@ import csv
 import src.util as util
 import pprint
 import json
+
 from transformers import DistilBertTokenizerFast
 from transformers import DistilBertForQuestionAnswering
 from transformers import DistilBertModel, DistilBertConfig
+
+from transformers import BertForQuestionAnswering
+from transformers import BertTokenizer, BertTokenizerFast
+from transformers import BertModel, BertConfig
 
 from src.args import get_args
 from src.model import QAGAN, QAGANConfig
 from src.trainer import Trainer
 
+def get_available_devices(force_gpu_ids=[]):
+    """Get IDs of all available GPUs.
+
+    Returns:
+        device (torch.device): Main device (GPU 0 or CPU).
+        gpu_ids (list): List of IDs of all GPUs that are available.
+    """
+    gpu_ids = []
+    if torch.cuda.is_available() and len(force_gpu_ids) != 0:
+        gpu_ids = force_gpu_ids
+        device = f'cuda:{gpu_ids[0]}'
+        torch.cuda.set_device(torch.device(device))
+    elif torch.cuda.is_available():
+        gpu_ids += [gpu_id for gpu_id in range(torch.cuda.device_count())]
+        device = f'cuda:{gpu_ids[0]}'
+        torch.cuda.set_device(torch.device(device))
+    else:
+        device = 'cpu'
+
+    return device, gpu_ids
+
 def main():
     # define parser and arguments
     args = get_args()
-    args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    # get device info
+    args.device, args.gpu_ids = get_available_devices(force_gpu_ids=[0])
+    args.batch_size*= max(1, len(args.gpu_ids))
     # set random seed
     util.set_seed(args.seed)
+
+    # define which model to use
+    if args.base_model == 'bert':
+        tokenizer_model = BertTokenizerFast
+        default_model = BertForQuestionAnswering
+        backbone_model = BertModel
+        backbone_config = BertConfig
+    elif args.base_model == 'distil-bert':
+        tokenizer_model = DistilBertTokenizerFast
+        default_model = DistilBertForQuestionAnswering
+        backbone_model = DistilBertModel
+        backbone_config = DistilBertConfig
+    else:
+        raise Exception(f'{args.base_model} is not supported')
 
     # load pre-trained base model
     model, tokenizer = None, None
     if args.variant == 'baseline':
-        tokenizer = DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased')
-        model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
+        tokenizer = tokenizer_model.from_pretrained(args.base_model_id)
+        model = default_model.from_pretrained(args.base_model_id)
     else:
-        config = DistilBertConfig()
+        config = backbone_config()
         config.output_hidden_states = False
         config.output_attentions = False
-        tokenizer = DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased')
-        backbone = DistilBertModel.from_pretrained("distilbert-base-uncased", config=config)
+        tokenizer = tokenizer_model.from_pretrained(args.base_model_id)
+        backbone = backbone_model.from_pretrained(args.base_model_id, config=config)
 
         if args.variant == 'baseline-cond':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer,
-                                  prediction_head='conditional_linear')
+                                  prediction_head='conditional_linear',
+                                  num_datasets=args.num_datasets)
         elif args.variant == 'baseline-cond-att':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer,
-                                  prediction_head='conditional_attention')
+                                  prediction_head='conditional_attention',
+                                  num_datasets=args.num_datasets)
         elif args.variant == 'qagan':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
                                   use_discriminator=True,
-                                  discriminate_cls=True)
+                                  discriminate_cls=True,
+                                  num_datasets=args.num_datasets)
         elif args.variant == 'qagan-hidden':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
                                   use_discriminator=True,
-                                  discriminate_hidden_layers=True)
+                                  discriminate_hidden_layers=True,
+                                  num_datasets=args.num_datasets)
         elif args.variant == 'qagan-cond':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
                                   use_discriminator=True,
                                   discriminate_cls=True,
                                   prediction_head='conditional_linear',
-                                  num_datasets=6)
+                                  num_datasets=args.num_datasets)
         elif args.variant == 'qagan-cond-kld':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
                                   use_discriminator=True,
                                   discriminate_cls=True,
                                   prediction_head='conditional_linear',
-                                  constrain_hidden_repr=True)
+                                  constrain_hidden_repr=True,
+                                  num_datasets=args.num_datasets)
         elif args.variant == 'qagan-cond-att':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
                                   use_discriminator=True,
                                   discriminate_cls=True,
-                                  prediction_head='conditional_attention')
+                                  prediction_head='conditional_attention',
+                                  num_datasets=args.num_datasets)
         elif args.variant == 'qagan-cond-tfm':
             qconfig = QAGANConfig(backbone=backbone, 
                                   tokenizer=tokenizer, 
                                   use_discriminator=True,
                                   discriminate_cls=True,
-                                  prediction_head='conditional_transformers')
+                                  prediction_head='conditional_transformers',
+                                  num_datasets=args.num_datasets)
         else:
             raise ValueError
         # define model
@@ -90,17 +139,20 @@ def main():
             qconfig['fake_discriminator_warmup_steps'] = 0
             model = QAGAN(config=qconfig).from_pretrained(args.pretrained_model)
         else:
-            model = DistilBertForQuestionAnswering.from_pretrained(args.pretrained_model)
+            model = default_model.from_pretrained(args.pretrained_model)
             
     # mode of operation
     if args.do_train:
-        if not os.path.exists(args.save_dir):
-            os.makedirs(args.save_dir)
-        args.save_dir = util.get_save_dir(args.save_dir, args.variant, args.run_name)
-        logger = util.get_logger(args.save_dir, 'log_train')
+        if not os.path.exists(args.output_dir):
+            os.makedirs(args.output_dir)
+        args.output_dir = util.get_output_dir(args.output_dir, 
+                                              args.variant, 
+                                              args.base_model, 
+                                              args.run_name)
+        logger = util.get_logger(args.output_dir, 'log_train')
     elif args.do_eval:
         split_name = 'test' if 'test' in args.eval_dir else 'validation'
-        logger = util.get_logger(args.save_dir, f'log_{split_name}')
+        logger = util.get_logger(args.output_dir, f'log_{split_name}_{args.eval_datasets}')
 
     if args.do_train:
         # define trainer
@@ -109,9 +161,9 @@ def main():
         trainer.train()
     elif args.do_eval:
         # load pretrained model
-        checkpoint_path = os.path.join(args.save_dir, 'checkpoint')
+        checkpoint_path = os.path.join(args.output_dir, 'checkpoint')
         if args.variant == 'baseline':
-            model = DistilBertForQuestionAnswering.from_pretrained(checkpoint_path)
+            model = default_model.from_pretrained(checkpoint_path)
         else:
             model = QAGAN(config=qconfig).from_pretrained(checkpoint_path)
         # define trainer
@@ -124,7 +176,7 @@ def main():
         results_str = ', '.join(f'{k}: {v:05.2f}' for k, v in eval_scores.items())
         logger.info(f'Eval {results_str}')
         # Write submission file
-        sub_path = os.path.join(args.save_dir, split_name + '_' + args.sub_file)
+        sub_path = os.path.join(args.output_dir, split_name + '_' + args.sub_file)
         logger.info(f'Writing submission file to {sub_path}...')
         with open(sub_path, 'w', newline='', encoding='utf-8') as csv_fh:
             csv_writer = csv.writer(csv_fh, delimiter=',')
