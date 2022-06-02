@@ -20,7 +20,14 @@
         ```   
 
 ### Setup, Training, and Validation
-- Setup environment with `cd environment && conda env create -f conda_env.yml`
+- Setup environment:
+  ```/bin/sh
+  cd environment && conda env create -f conda_env.yml
+  conda activate qagan
+  python -m ipykernel install --user --name qagan --display-name "qagan"
+  cd ..
+  ```
+
 - Usage: 
     ```/bin/sh
     Usage: ./run_experiments.sh train {variant} {experiment_name}
@@ -35,9 +42,4 @@
     - Evaluate the system on test set with `./run_experiments.sh test qagan-finetune default`
 - For submitting to leaderboard, upload the csv file generated in `save/{VARIANT}.{EXPERIMENT_NAME}-01` to the test leaderboard.
 - To run all the experiments, run `sh experiments_launcher.sh`.  
-- To perform data augmentation, run `python src/data_augmentation.py --domain="indomain_train" --datasets=sHotpotQA,NaturalQuestions,NewsQA,SearchQA,SQuAD,TriviaQA --fast_metric=True`
-
-## Quantitative Evaluation
-
-![](media/quantitative_eval_val.png)
-![](media/quantitative_eval_test.png)
+- To perform data augmentation, run `python src/data_augmentation.py --domain="indomain_train" --datasets=HotpotQA,NaturalQuestions,NewsQA,SearchQA,SQuAD,TriviaQA --fast_metric=True`
