@@ -1,5 +1,13 @@
 # QAGAN: Adversarial Approach To Learning Domain Invariant Language Features
 
+In this work, we explore adversarial training approach towards learning domain-invariant features so that language models can generalize well to out-of-domain datasets. We also inspect various other ways to boost our model performance including data augmentation by paraphrasing sentences, conditioning end of answer span prediction on the start word, and carefully designed annealing function.
+
+![](media/qagan-variants.png)
+
+We also dissect our model outputs and visualize the model hidden-states by projecting them onto a lower-dimensional space, and discover that our specific adversarial training approach indeed encourages the model to learn domain invariant embedding and bring them closer in the multi-dimensional space.
+
+![](media/qagan-domain-gap.png)
+
 ## Getting Started
 
 ### Datasets
