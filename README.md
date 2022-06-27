@@ -1,5 +1,9 @@
 # QAGAN: Adversarial Approach To Learning Domain Invariant Language Features
 
+This is the official implementation of QAGAN. 
+ 
+### [[**Paper**](https://arxiv.org/abs/2206.12388)]
+
 In this work, we explore adversarial training approach towards learning domain-invariant features so that language models can generalize well to out-of-domain datasets. We also inspect various other ways to boost our model performance including data augmentation by paraphrasing sentences, conditioning end of answer span prediction on the start word, and carefully designed annealing function.
 
 ![](media/qagan-variants.png)
@@ -51,3 +55,20 @@ We also dissect our model outputs and visualize the model hidden-states by proje
 - For submitting to leaderboard, upload the csv file generated in `save/{VARIANT}.{EXPERIMENT_NAME}-01` to the test leaderboard.
 - To run all the experiments, run `sh experiments_launcher.sh`.  
 - To perform data augmentation, run `python src/data_augmentation.py --domain="indomain_train" --datasets=HotpotQA,NaturalQuestions,NewsQA,SearchQA,SQuAD,TriviaQA --fast_metric=True`
+
+## Citation
+
+If you find our work useful in your research, please cite this as:
+
+```
+@misc{https://doi.org/10.48550/arxiv.2206.12388,
+  doi = {10.48550/ARXIV.2206.12388},
+  url = {https://arxiv.org/abs/2206.12388},
+  author = {Shrivastava, Shubham and Wang, Kaiyue},
+  keywords = {Computation and Language (cs.CL), FOS: Computer and information sciences, FOS: Computer and information sciences},
+  title = {QAGAN: Adversarial Approach To Learning Domain Invariant Language Features},
+  publisher = {arXiv},
+  year = {2022},
+  copyright = {arXiv.org perpetual, non-exclusive license}
+}
+```
