@@ -1,6 +1,6 @@
 # QAGAN: Adversarial Approach To Learning Domain Invariant Language Features
 
-This is the official implementation of [[**QAGAN**]](https://arxiv.org/abs/2206.12388)]
+This is the official implementation of [**QAGAN**](https://arxiv.org/abs/2206.12388)
 
 In this work, we explore adversarial training approach towards learning domain-invariant features so that language models can generalize well to out-of-domain datasets. We also inspect various other ways to boost our model performance including data augmentation by paraphrasing sentences, conditioning end of answer span prediction on the start word, and carefully designed annealing function.
 
