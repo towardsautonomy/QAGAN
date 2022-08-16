@@ -169,18 +169,14 @@ class TransformersEncoder(nn.Module):
     def forward(self, x, mask=None):
         # x: batch_size x len_q x hidden_size
         # mask: batch_size x len_q x len_k
-        # compute attention
-        x = self.attention(x, x, x, mask)
-        # add residual connection
-        x = x + x
+        # compute attention and residual connection
+        x = self.attention(x, x, x, mask) + x
         # apply layer normalization
         x = self.norm1(x)
         # apply dropout
         x = self.dropout1(x)
-        # apply feed forward
-        x = self.feed_forward(x)
-        # add residual connection
-        x = x + x
+        # apply feed forward and residual connection
+        x = self.feed_forward(x) + x
         # apply layer normalization
         x = self.norm2(x)
         # apply dropout
@@ -218,18 +214,14 @@ class TransformersDecoder(nn.Module):
         x = self.norm1(x)
         # apply dropout
         x = self.dropout1(x)
-        # compute attention
-        x = self.cross_attention(q=x, k=encoder_out, v=encoder_out, mask=mask)
-        # add residual connection
-        x = x + x
+        # compute attention and residual connection
+        x = self.cross_attention(q=x, k=encoder_out, v=encoder_out, mask=mask) + x
         # apply layer normalization
         x = self.norm2(x)
         # apply dropout
         x = self.dropout2(x)
-        # apply feed forward
-        x = self.feed_forward(x)
-        # add residual connection
-        x = x + x
+        # apply feed forward and residual connection
+        x = self.feed_forward(x) + x
         # apply layer normalization
         x = self.norm3(x)
         # apply dropout
